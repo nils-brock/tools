@@ -9,6 +9,13 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script>
+    window.MathJax = {
+      startup: { typeset: false },
+      svg: { fontCache: 'local' }
+    };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+  <script>
     tailwind.config = {
       theme: {
         extend: {
@@ -72,7 +79,7 @@
     }
   </style>
 </head>
-<body class="h-full flex flex-col font-sans text-slate-800 overflow-hidden select-none">
+<body class="min-h-screen lg:h-screen flex flex-col font-sans text-slate-800 select-none">
 
   <!-- TOP HEADER & EXPORT BAR -->
   <header class="bg-white border-b border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0 z-20 shadow-sm">
@@ -145,10 +152,10 @@
   </header>
 
   <!-- MAIN CONTENT -->
-  <div class="flex-1 flex flex-col lg:flex-row overflow-hidden bg-slate-100">
+  <div class="flex-1 flex flex-col lg:flex-row lg:overflow-hidden bg-slate-100">
 
     <!-- LEFT SIDEBAR: SETTINGS -->
-    <aside class="w-full lg:w-96 bg-white border-r border-slate-200 flex flex-col h-2/5 lg:h-full shrink-0 z-10">
+    <aside class="w-full lg:w-96 bg-white border-b lg:border-b-0 lg:border-r border-slate-200 flex flex-col lg:h-full lg:shrink-0 z-10">
       
       <!-- 1. SCHNELLVORLAGEN -->
       <div class="p-3.5 bg-slate-50 border-b border-slate-200 shrink-0">
@@ -177,7 +184,7 @@
       </div>
 
       <!-- Scrollable Settings List -->
-      <div class="flex-1 overflow-y-auto p-4 space-y-5 divide-y divide-slate-100 text-xs">
+      <div class="flex-1 min-h-0 p-4 space-y-5 divide-y divide-slate-100 text-xs lg:overflow-y-auto">
 
         <!-- 2. DEFINITIONS- & WERTEBEREICH -->
         <div class="space-y-3">
@@ -312,13 +319,6 @@
                 <span class="text-[11px] text-brand-700 font-mono font-semibold" id="labelEveryHint">jedes 2. Kästchen</span>
               </div>
               <div class="flex items-center gap-2">
-                <select id="labelIntervalSelect" class="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium focus:border-brand-500">
-                  <option value="1">Jedes Kästchen beschriften (alle 0,5 cm)</option>
-                  <option value="2" selected>Jedes 2. Kästchen beschriften (alle 1,0 cm)</option>
-                  <option value="4">Jedes 4. Kästchen beschriften (alle 2,0 cm)</option>
-                  <option value="5">Jedes 5. Kästchen beschriften (alle 2,5 cm)</option>
-                  <option value="10">Jedes 10. Kästchen beschriften (alle 5,0 cm)</option>
-                </select>
                 <div class="flex items-center gap-1 shrink-0" title="Eigenes Kästchen-Intervall">
                   <span class="text-[11px] text-slate-500">Alle</span>
                   <input type="number" id="labelIntervalCustom" value="2" min="1" max="50" step="1" class="w-14 px-1.5 py-1.5 rounded-lg border border-slate-300 bg-white font-mono text-xs text-center">
@@ -345,6 +345,7 @@
               <input type="text" id="labelY" value="y" placeholder="z.B. y, Weg s in m" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs focus:border-brand-500">
             </div>
           </div>
+          <p class="text-[10px] leading-relaxed text-slate-500">LaTeX zwischen zwei Dollarzeichen eingeben, z. B. <code class="rounded bg-slate-100 px-1">$T_{max}$</code>.</p>
 
           <!-- Schriftgröße -->
           <div>
@@ -513,7 +514,7 @@
     </aside>
 
     <!-- RIGHT AREA: INTERACTIVE LIVE PREVIEW WITH RULERS -->
-    <main class="flex-1 flex flex-col h-3/5 lg:h-full overflow-hidden relative checkerboard">
+    <main class="flex-1 flex flex-col h-[60vh] min-h-[320px] lg:h-full min-w-0 overflow-hidden relative checkerboard">
       
       <!-- Floating Zoom & Scale Control Bar -->
       <div class="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-10">
@@ -606,6 +607,7 @@
     // Hilfs-Canvas für präzise Textbreiten-Messung (für automatische Bildverbreiterung)
     const measureCanvas = document.createElement('canvas');
     const measureCtx = measureCanvas.getContext('2d');
+    const axisMathCache = new Map();
 
     // DOM-Referenzen
     const canvas = document.getElementById('mainCanvas');
@@ -620,7 +622,6 @@
       yMax: document.getElementById('yMax'),
       gridSpacingCm: document.getElementById('gridSpacingCm'),
       scaleExprInput: document.getElementById('scaleExprInput'),
-      labelIntervalSelect: document.getElementById('labelIntervalSelect'),
       labelIntervalCustom: document.getElementById('labelIntervalCustom'),
       dpiSelect: document.getElementById('dpiSelect'),
       marginCm: document.getElementById('marginCm'),
@@ -761,6 +762,133 @@
       return formatNumberWithSep(val);
     }
 
+    function axisLabelTex(label) {
+      const match = String(label).match(/^\s*\$([\s\S]+)\$\s*$/);
+      return match ? match[1] : null;
+    }
+
+    function axisLabelFallback(tex) {
+      return tex.replace(/\\([a-zA-Z]+)/g, '$1').replace(/[{}_^]/g, '');
+    }
+
+    function getAxisMathEntry(tex) {
+      if (!window.MathJax?.tex2svgPromise) return null;
+
+      const cacheKey = `${state.axisColor}\u0000${tex}`;
+      if (axisMathCache.has(cacheKey)) return axisMathCache.get(cacheKey);
+
+      const entry = { result: null, promise: null };
+      const axisColor = state.axisColor;
+      entry.promise = Promise.resolve(window.MathJax.startup?.promise)
+        .then(() => window.MathJax.tex2svgPromise(tex, { display: false }))
+        .then(holder => {
+          const svg = holder.querySelector('svg');
+          if (!svg) throw new Error('MathJax hat kein SVG erzeugt.');
+
+          const viewBox = (svg.getAttribute('viewBox') || '').trim().split(/[ ,]+/).map(Number);
+          if (viewBox.length !== 4 || !viewBox.every(Number.isFinite) || viewBox[2] <= 0 || viewBox[3] <= 0) {
+            throw new Error('Ungültige MathJax-SVG-Abmessungen.');
+          }
+
+          const imageSvg = svg.cloneNode(true);
+          imageSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+          imageSvg.setAttribute('width', String(viewBox[2]));
+          imageSvg.setAttribute('height', String(viewBox[3]));
+          imageSvg.setAttribute('color', axisColor);
+          imageSvg.style.removeProperty('vertical-align');
+
+          const source = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(imageSvg))}`;
+          const image = new Image();
+          return new Promise((resolve, reject) => {
+            image.onload = () => resolve({ image, svg: imageSvg, viewBox });
+            image.onerror = reject;
+            image.src = source;
+          });
+        })
+        .then(result => {
+          entry.result = result;
+          return result;
+        })
+        .catch(error => {
+          console.error('LaTeX-Achsenbeschriftung konnte nicht gerendert werden:', error);
+          return null;
+        });
+
+      axisMathCache.set(cacheKey, entry);
+      entry.promise.then(() => draw());
+      return entry;
+    }
+
+    function measureAxisLabel(label, fontSizePx) {
+      const tex = axisLabelTex(label);
+      if (!tex) return measureCtx.measureText(label).width;
+
+      const entry = getAxisMathEntry(tex);
+      if (entry?.result) {
+        const [, , viewBoxWidth, viewBoxHeight] = entry.result.viewBox;
+        return (viewBoxWidth / viewBoxHeight) * fontSizePx;
+      }
+      return measureCtx.measureText(axisLabelFallback(tex)).width;
+    }
+
+    function axisMathPlacement(result, anchorX, baselineY, alignment, vertical, fontSize) {
+      const [viewBoxX, viewBoxY, viewBoxWidth, viewBoxHeight] = result.viewBox;
+      const scale = fontSize / viewBoxHeight;
+      const width = viewBoxWidth * scale;
+      const height = viewBoxHeight * scale;
+      const left = (alignment === 'center' ? anchorX - width / 2 : anchorX) - viewBoxX * scale;
+      let top = baselineY + viewBoxY * scale;
+      if (vertical === 'middle') top = baselineY - (viewBoxY + viewBoxHeight / 2) * scale;
+      if (vertical === 'bottom') top = baselineY - (viewBoxY + viewBoxHeight) * scale;
+      return { left, top, width, height };
+    }
+
+    function drawAxisLabel(targetCtx, label, x, y, alignment, vertical, fontSizePx) {
+      const tex = axisLabelTex(label);
+      targetCtx.textAlign = alignment;
+      targetCtx.textBaseline = vertical === 'middle' ? 'middle' : 'bottom';
+
+      if (!tex) {
+        targetCtx.fillText(label, x, y);
+        return;
+      }
+
+      const result = getAxisMathEntry(tex)?.result;
+      if (!result) {
+        targetCtx.fillText(axisLabelFallback(tex), x, y);
+        return;
+      }
+
+      const placement = axisMathPlacement(result, x, y, alignment, vertical, fontSizePx);
+      targetCtx.drawImage(result.image, placement.left, placement.top, placement.width, placement.height);
+    }
+
+    function axisMathSvg(label, x, y, alignment, fontSizeCm) {
+      const tex = axisLabelTex(label);
+      if (!tex) return null;
+
+      const result = getAxisMathEntry(tex)?.result;
+      if (!result) return null;
+
+      const placement = axisMathPlacement(result, x, y, alignment, 'baseline', fontSizeCm);
+      const svg = result.svg.cloneNode(true);
+      svg.setAttribute('x', placement.left.toFixed(4));
+      svg.setAttribute('y', placement.top.toFixed(4));
+      svg.setAttribute('width', placement.width.toFixed(4));
+      svg.setAttribute('height', placement.height.toFixed(4));
+      svg.setAttribute('color', state.axisColor);
+      svg.style.removeProperty('vertical-align');
+      return new XMLSerializer().serializeToString(svg);
+    }
+
+    async function prepareAxisMathLabels() {
+      const labels = [state.labelX, state.labelY]
+        .map(axisLabelTex)
+        .filter(Boolean);
+      await Promise.all(labels.map(tex => getAxisMathEntry(tex)?.promise).filter(Boolean));
+      draw();
+    }
+
     /**
      * Berechnung aller physischen & darstellungsrelevanten Maße
      * inklusive automatischer Bildverbreiterung für lange Achsenbeschriftungen und Zahlenwerte!
@@ -811,7 +939,7 @@
       measureCtx.font = `italic bold ${labelFontPx}px "Times New Roman", Times, serif`;
 
       if (state.labelX && state.labelX.trim().length > 0) {
-        const labelXWidth = measureCtx.measureText(state.labelX).width;
+        const labelXWidth = measureAxisLabel(state.labelX, labelFontPx);
         const neededRight = Math.ceil(arrowExtraPx + (8 * scaleRef) + labelXWidth + edgePadPx);
         padRightPx = Math.max(padRightPx, neededRight);
 
@@ -822,7 +950,7 @@
       }
 
       if (state.labelY && state.labelY.trim().length > 0) {
-        const labelYWidth = measureCtx.measureText(state.labelY).width;
+        const labelYWidth = measureAxisLabel(state.labelY, labelFontPx);
         const halfYWidth = labelYWidth / 2;
 
         // Y-Achsenname sitzt zentriert über der Y-Achse bei relXAxisX
@@ -1153,16 +1281,13 @@
       }
 
       // 5. Achsenbeschriftung
-      targetCtx.font = `italic bold ${Math.round(fontSizePx * 1.25)}px "Times New Roman", Times, serif`;
+      const axisLabelFontPx = Math.round(fontSizePx * 1.25);
+      targetCtx.font = `italic bold ${axisLabelFontPx}px "Times New Roman", Times, serif`;
       if (state.labelX) {
-        targetCtx.textAlign = 'left';
-        targetCtx.textBaseline = 'middle';
-        targetCtx.fillText(state.labelX, plotRight + arrowExtra + (8 * scaleRef), yAxisY);
+        drawAxisLabel(targetCtx, state.labelX, plotRight + arrowExtra + (8 * scaleRef), yAxisY, 'left', 'middle', axisLabelFontPx);
       }
       if (state.labelY) {
-        targetCtx.textAlign = 'center';
-        targetCtx.textBaseline = 'bottom';
-        targetCtx.fillText(state.labelY, xAxisX, plotTop - arrowExtra - (6 * scaleRef));
+        drawAxisLabel(targetCtx, state.labelY, xAxisX, plotTop - arrowExtra - (6 * scaleRef), 'center', 'bottom', axisLabelFontPx);
       }
 
       targetCtx.restore();
@@ -1176,8 +1301,11 @@
     // Passt die Bildschirm-Darstellung des Canvas an (ohne die echte Export-Auflösung zu verändern)
     function updateViewportDisplaySize() {
       const dim = computeDimensions();
-      const availW = Math.max(200, viewportContainer.clientWidth - 64);
-      const availH = Math.max(200, viewportContainer.clientHeight - 64);
+      const viewportStyles = getComputedStyle(viewportContainer);
+      const horizontalPadding = parseFloat(viewportStyles.paddingLeft) + parseFloat(viewportStyles.paddingRight);
+      const verticalPadding = parseFloat(viewportStyles.paddingTop) + parseFloat(viewportStyles.paddingBottom);
+      const availW = Math.max(200, viewportContainer.clientWidth - horizontalPadding);
+      const availH = Math.max(200, viewportContainer.clientHeight - verticalPadding);
 
       const screenPxPerCm = 37.8; // 96 DPI Referenz
       const naturalScreenW = dim.totalWidthCm * screenPxPerCm;
@@ -1350,9 +1478,6 @@
 
       const activeInterval = activeAxis === 'x' ? state.labelIntervalX : state.labelIntervalY;
       inputs.labelIntervalCustom.value = activeInterval;
-      if (['1', '2', '4', '5', '10'].includes(String(activeInterval))) {
-        inputs.labelIntervalSelect.value = String(activeInterval);
-      }
 
       inputs.gridSpacingCm.value = state.gridSpacingCm;
       inputs.dpiSelect.value = state.dpi;
@@ -1451,6 +1576,7 @@
           return;
         }
 
+        await prepareAxisMathLabels();
         const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
         const item = new ClipboardItem({ 'image/png': blob });
         await navigator.clipboard.write([item]);
@@ -1469,7 +1595,8 @@
     }
 
     // 2. PNG DOWNLOAD (unterstützt Transparenz)
-    function downloadPNG() {
+    async function downloadPNG() {
+      await prepareAxisMathLabels();
       const dim = computeDimensions();
       const link = document.createElement('a');
       link.download = `koordinatensystem_${dim.totalWidthCm.toFixed(1)}x${dim.totalHeightCm.toFixed(1)}cm.png`;
@@ -1479,7 +1606,8 @@
     }
 
     // 3. JPG DOWNLOAD (immer mit reinweißem Hintergrund)
-    function downloadJPG() {
+    async function downloadJPG() {
+      await prepareAxisMathLabels();
       const dim = computeDimensions();
       const offscreen = document.createElement('canvas');
       renderCoordinateSystem(offscreen, true);
@@ -1492,8 +1620,9 @@
     }
 
     // 4. PDF DOWNLOAD (Maßstabsgetreu 1:1 in Zentimetern)
-    function downloadPDF() {
+    async function downloadPDF() {
       try {
+        await prepareAxisMathLabels();
         const dim = computeDimensions();
         const { jsPDF } = window.jspdf;
 
@@ -1519,7 +1648,8 @@
     }
 
     // 5. SVG VEKTOREXPORT (MIT ECHTEN CM-ANGABEN & DYNAMISCHEN RÄNDERN)
-    function downloadSVG() {
+    async function downloadSVG() {
+      await prepareAxisMathLabels();
       const dim = computeDimensions();
       const w = dim.totalWidthCm;
       const h = dim.totalHeightCm;
@@ -1643,11 +1773,20 @@
         svg += `  <text x="${(originX - 0.12).toFixed(3)}" y="${(originY + 0.28).toFixed(3)}" text-anchor="end" class="tick-num">0</text>\n`;
       }
 
+      const scaleRef = state.dpi / 300;
+      const axisLabelFontPx = Math.round(Math.round(state.fontSize * scaleRef * 2.2) * 1.25);
+      const axisLabelFontCm = axisLabelFontPx / dim.pixelsPerCm;
       if (state.labelX) {
-        svg += `  <text x="${(plotRight + arrowEx + 0.15).toFixed(3)}" y="${(yAxisY + 0.08).toFixed(3)}" text-anchor="start" class="axis-label">${esc(state.labelX)}</text>\n`;
+        const x = plotRight + arrowEx + 0.15;
+        const y = yAxisY + 0.08;
+        const mathSvg = axisMathSvg(state.labelX, x, y, 'left', axisLabelFontCm);
+        svg += mathSvg ? `  ${mathSvg}\n` : `  <text x="${x.toFixed(3)}" y="${y.toFixed(3)}" text-anchor="start" class="axis-label">${esc(axisLabelTex(state.labelX) ? axisLabelFallback(axisLabelTex(state.labelX)) : state.labelX)}</text>\n`;
       }
       if (state.labelY) {
-        svg += `  <text x="${xAxisX.toFixed(3)}" y="${(plotTop - arrowEx - 0.12).toFixed(3)}" text-anchor="middle" class="axis-label">${esc(state.labelY)}</text>\n`;
+        const x = xAxisX;
+        const y = plotTop - arrowEx - 0.12;
+        const mathSvg = axisMathSvg(state.labelY, x, y, 'center', axisLabelFontCm);
+        svg += mathSvg ? `  ${mathSvg}\n` : `  <text x="${x.toFixed(3)}" y="${y.toFixed(3)}" text-anchor="middle" class="axis-label">${esc(axisLabelTex(state.labelY) ? axisLabelFallback(axisLabelTex(state.labelY)) : state.labelY)}</text>\n`;
       }
 
       svg += `</svg>`;
@@ -1667,9 +1806,9 @@
       // Automatische Neuberechnung bei Input-Änderung
       Object.keys(inputs).forEach(key => {
         const el = inputs[key];
-        if (!el || key === 'scaleExprInput' || key === 'labelIntervalSelect') return;
-        el.addEventListener('input', readInputsToState);
-        el.addEventListener('change', readInputsToState);
+        if (!el || key === 'scaleExprInput') return;
+        const eventType = el instanceof HTMLSelectElement || el.type === 'checkbox' ? 'change' : 'input';
+        el.addEventListener(eventType, readInputsToState);
       });
 
       // Umschalten zwischen synchroner und getrennter Achsenskalierung
@@ -1730,12 +1869,6 @@
         const activeAxis = state.syncAxes ? 'x' : state.activeScaleAxis;
         const activePreset = activeAxis === 'x' ? state.scalePresetModeX : state.scalePresetModeY;
         applyScaleExpression(raw, activePreset, true);
-      });
-
-      // Zahlen-Intervall Dropdown & Zahlenfeld koppeln
-      inputs.labelIntervalSelect.addEventListener('change', () => {
-        inputs.labelIntervalCustom.value = inputs.labelIntervalSelect.value;
-        readInputsToState();
       });
 
       // Dezimaltrennzeichen (Komma vs. Punkt) in den erweiterten Einstellungen
