@@ -3,9 +3,295 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hello World</title>
+    <meta name="theme-color" content="#f3f5ef">
+    <title>Werkzeugkiste</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --ink: #172b28;
+            --muted: #61736d;
+            --paper: #f3f5ef;
+            --green: #164d41;
+            --lime: #d5f36a;
+            --line: #d9dfd5;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            min-width: 320px;
+            margin: 0;
+            background: var(--paper);
+            color: var(--ink);
+            font-family: "Trebuchet MS", Verdana, sans-serif;
+        }
+
+        .topbar {
+            min-height: 220px;
+            padding: 30px max(7vw, 24px) 42px;
+            background: var(--green);
+            color: #fff;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .topbar::after {
+            position: absolute;
+            right: 8%;
+            bottom: -130px;
+            width: 300px;
+            height: 300px;
+            border: 1px solid rgb(255 255 255 / 18%);
+            border-radius: 50%;
+            box-shadow: 0 0 0 32px rgb(255 255 255 / 5%), 0 0 0 64px rgb(255 255 255 / 4%);
+            content: "";
+        }
+
+        .brand {
+            position: relative;
+            z-index: 1;
+            width: min(1100px, 100%);
+            margin: 0 auto;
+        }
+
+        .brand-mark {
+            display: inline-grid;
+            width: 40px;
+            height: 40px;
+            place-items: center;
+            border: 1px solid rgb(255 255 255 / 40%);
+            border-radius: 12px;
+            color: var(--lime);
+            font-size: 23px;
+            line-height: 1;
+        }
+
+        h1 {
+            margin: 20px 0 0;
+            font-family: Georgia, "Times New Roman", serif;
+            font-size: clamp(42px, 7vw, 68px);
+            font-weight: 400;
+            line-height: 1;
+        }
+
+        main {
+            width: min(1100px, 86%);
+            margin: 0 auto;
+            padding: 34px 0 72px;
+        }
+
+        .section-heading {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 22px;
+        }
+
+        h2 {
+            margin: 0;
+            font-size: 15px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .tool-count {
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .tool-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr));
+            gap: 22px;
+        }
+
+        .tool-card {
+            display: block;
+            overflow: hidden;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #fff;
+            color: inherit;
+            text-decoration: none;
+            transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+        }
+
+        .tool-card:hover {
+            transform: translateY(-4px);
+            border-color: #aebdb1;
+            box-shadow: 0 12px 26px rgb(23 43 40 / 10%);
+        }
+
+        .tool-card:focus-visible {
+            outline: 3px solid #dd6b4d;
+            outline-offset: 4px;
+        }
+
+        .preview {
+            position: relative;
+            display: grid;
+            aspect-ratio: 16 / 10;
+            place-items: center;
+            overflow: hidden;
+            background-color: #c8e8db;
+            background-image: linear-gradient(rgb(22 77 65 / 11%) 1px, transparent 1px), linear-gradient(90deg, rgb(22 77 65 / 11%) 1px, transparent 1px), radial-gradient(ellipse at 70% 20%, #f3dc9c, transparent 34%), linear-gradient(135deg, #c8e8db, #e7f0ca);
+            background-size: 28px 28px, 28px 28px, auto, auto;
+        }
+
+        .axis-x,
+        .axis-y {
+            position: absolute;
+            display: block;
+            background: var(--green);
+        }
+
+        .axis-x {
+            top: 56%;
+            left: 17%;
+            width: 67%;
+            height: 2px;
+        }
+
+        .axis-y {
+            top: 17%;
+            left: 50%;
+            width: 2px;
+            height: 67%;
+        }
+
+        .axis-x::after,
+        .axis-y::after {
+            position: absolute;
+            width: 0;
+            height: 0;
+            content: "";
+        }
+
+        .axis-x::after {
+            top: -4px;
+            right: -1px;
+            border-top: 5px solid transparent;
+            border-bottom: 5px solid transparent;
+            border-left: 8px solid var(--green);
+        }
+
+        .axis-y::after {
+            top: -1px;
+            left: -4px;
+            border-right: 5px solid transparent;
+            border-bottom: 8px solid var(--green);
+            border-left: 5px solid transparent;
+        }
+
+        .point {
+            position: absolute;
+            z-index: 1;
+            width: 15px;
+            height: 15px;
+            border: 3px solid white;
+            border-radius: 50%;
+            background: #df6949;
+            box-shadow: 0 1px 5px rgb(23 43 40 / 25%);
+        }
+
+        .point-one {
+            top: 34%;
+            left: 65%;
+        }
+
+        .point-two {
+            top: 66%;
+            left: 35%;
+            width: 11px;
+            height: 11px;
+            background: #d6a52d;
+        }
+
+        .preview-label {
+            position: absolute;
+            top: 21%;
+            right: 20%;
+            color: var(--green);
+            font-family: Georgia, "Times New Roman", serif;
+            font-size: 15px;
+            font-style: italic;
+        }
+
+        .card-info {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 18px 20px;
+        }
+
+        h3 {
+            margin: 0;
+            font-family: Georgia, "Times New Roman", serif;
+            font-size: 22px;
+            font-weight: 400;
+        }
+
+        .open-mark {
+            display: grid;
+            flex: 0 0 34px;
+            width: 34px;
+            height: 34px;
+            place-items: center;
+            border-radius: 50%;
+            background: #edf3e8;
+            color: var(--green);
+            font-size: 19px;
+            transition: background 180ms ease, transform 180ms ease;
+        }
+
+        .tool-card:hover .open-mark {
+            transform: translate(2px, -2px);
+            background: var(--lime);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                scroll-behavior: auto !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+    </style>
 </head>
 <body>
-    <h1>Hello, World!</h1>
+    <header class="topbar">
+        <div class="brand">
+            <span class="brand-mark" aria-hidden="true">✳</span>
+            <h1>Werkzeugkiste</h1>
+        </div>
+    </header>
+
+    <main>
+        <div class="section-heading">
+            <h2>Alle Tools</h2>
+            <span class="tool-count">1 Tool</span>
+        </div>
+        <section class="tool-grid" aria-label="Verfügbare Tools">
+            <a class="tool-card" href="koordinatensystem_generator.html">
+                <div class="preview" role="img" aria-label="Vorschau eines Koordinatensystems mit zwei markierten Punkten">
+                    <span class="axis-x"></span>
+                    <span class="axis-y"></span>
+                    <span class="point point-one"></span>
+                    <span class="point point-two"></span>
+                    <span class="preview-label">(x, y)</span>
+                </div>
+                <div class="card-info">
+                    <h3>Koordinatensystem</h3>
+                    <span class="open-mark" aria-hidden="true">↗</span>
+                </div>
+            </a>
+        </section>
+    </main>
 </body>
 </html>

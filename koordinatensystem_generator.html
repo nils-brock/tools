@@ -1,0 +1,1884 @@
+<!DOCTYPE html>
+<html lang="de" class="h-full bg-slate-900">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Koordinatensystem-Generator für Arbeitsblätter (Maßstab 1:1)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#eff6ff',
+              100: '#dbeafe',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Schachbrettmuster für transparente Vorschau */
+    .checkerboard {
+      background-color: #f8fafc;
+      background-image: 
+        linear-gradient(45deg, #e2e8f0 25%, transparent 25%), 
+        linear-gradient(-45deg, #e2e8f0 25%, transparent 25%), 
+        linear-gradient(45deg, transparent 75%, #e2e8f0 75%), 
+        linear-gradient(-45deg, transparent 75%, #e2e8f0 75%);
+      background-size: 20px 20px;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+    }
+
+    /*Dezente Scrollbars */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    details > summary {
+      list-style: none;
+    }
+    details > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    /* Kleine Pfeile (Spin-Buttons) in Zahlen-Eingabefeldern dauerhaft sichtbar machen */
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button {
+      opacity: 1;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body class="h-full flex flex-col font-sans text-slate-800 overflow-hidden select-none">
+
+  <!-- TOP HEADER & EXPORT BAR -->
+  <header class="bg-white border-b border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0 z-20 shadow-sm">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-brand-600 flex items-center justify-center text-white shadow-sm">
+        <i class="fa-solid fa-ruler-combined text-base"></i>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="text-sm sm:text-base font-bold text-slate-900 leading-tight">Koordinatensystem-Generator</h1>
+          <span class="hidden md:inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <i class="fa-solid fa-check-circle mr-1"></i> Echter 0,5 cm Maßstab
+          </span>
+        </div>
+        <p class="text-[11px] text-slate-500 hidden sm:block">Maßstabsgetreuer Export für Word, LibreOffice, GoodNotes & PDF-Arbeitsblätter</p>
+      </div>
+    </div>
+
+    <!-- Live Physical Dimensions Info Badge -->
+    <div class="hidden xl:flex items-center gap-3 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl text-xs">
+      <div class="flex items-center gap-1.5 text-slate-700 font-medium">
+        <i class="fa-solid fa-expand text-brand-600"></i>
+        <span>Druckgröße:</span>
+        <strong id="physicalDimText" class="text-slate-900 font-mono">11,4 cm × 11,4 cm</strong>
+      </div>
+      <span class="text-slate-300">|</span>
+      <div class="text-slate-500 font-mono" id="pixelDimText">1346 × 1346 px</div>
+      <span class="text-slate-300">|</span>
+      <div class="text-brand-700 font-medium" id="boxCountText">10 × 10 Kästchen</div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+      <!-- Transparenter Hintergrund Direkt-Schalter -->
+      <label class="flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium cursor-pointer transition border border-slate-200" title="Hintergrund für PNG & Zwischenablage transparent machen">
+        <input type="checkbox" id="bgTransparent" class="rounded text-brand-600 focus:ring-brand-500 w-3.5 h-3.5">
+        <span>Transparenz</span>
+      </label>
+
+      <!-- Button: Zwischenablage (Nur Kopieren, kein Download) -->
+      <button id="copyBtn" type="button" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-semibold text-xs sm:text-sm shadow-sm transition cursor-pointer" title="Bild direkt in die Zwischenablage kopieren (Strg+V in Word)">
+        <i class="fa-regular fa-copy"></i>
+        <span>Zwischenablage</span>
+      </button>
+
+      <!-- Button: PNG Download -->
+      <button id="downloadPngBtn" type="button" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-semibold text-xs sm:text-sm transition cursor-pointer" title="Als PNG-Bilddatei herunterladen">
+        <i class="fa-solid fa-download text-xs"></i>
+        <span>PNG</span>
+      </button>
+
+      <!-- Button: JPG Download -->
+      <button id="downloadJpgBtn" type="button" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-700 hover:bg-slate-800 text-white font-semibold text-xs sm:text-sm transition cursor-pointer" title="Als JPG-Bilddatei (mit weißem Hintergrund) herunterladen">
+        <i class="fa-regular fa-file-image text-xs"></i>
+        <span>JPG</span>
+      </button>
+
+      <!-- Button: PDF Download -->
+      <button id="downloadPdfBtn" type="button" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs sm:text-sm shadow-sm transition cursor-pointer" title="Maßstabsgetreues PDF (1:1 in cm) herunterladen">
+        <i class="fa-regular fa-file-pdf"></i>
+        <span>PDF</span>
+      </button>
+
+      <!-- Button: SVG Download -->
+      <button id="downloadSvgBtn" type="button" class="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-medium text-xs sm:text-sm transition cursor-pointer" title="Exakte Vektorgrafik (SVG) mit cm-Maßen">
+        <i class="fa-solid fa-bezier-curve text-brand-600"></i>
+        <span class="hidden md:inline">SVG</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN CONTENT -->
+  <div class="flex-1 flex flex-col lg:flex-row overflow-hidden bg-slate-100">
+
+    <!-- LEFT SIDEBAR: SETTINGS -->
+    <aside class="w-full lg:w-96 bg-white border-r border-slate-200 flex flex-col h-2/5 lg:h-full shrink-0 z-10">
+      
+      <!-- 1. SCHNELLVORLAGEN -->
+      <div class="p-3.5 bg-slate-50 border-b border-slate-200 shrink-0">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Schnellvorlagen (0,5 cm Kästchen)</span>
+          <button id="resetBtn" type="button" class="text-xs text-brand-600 hover:underline font-medium">Zurücksetzen</button>
+        </div>
+        <div class="grid grid-cols-2 gap-1.5">
+          <button type="button" data-preset="standard" class="preset-btn px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white border border-slate-200 hover:border-brand-500 hover:text-brand-600 transition text-left flex items-center justify-between shadow-2xs">
+            <span>Standard (-5..5)</span>
+            <span class="text-[10px] text-slate-400">1 LE</span>
+          </button>
+          <button type="button" data-preset="quadrant1" class="preset-btn px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white border border-slate-200 hover:border-brand-500 hover:text-brand-600 transition text-left flex items-center justify-between shadow-2xs">
+            <span>1. Quadrant (0..10)</span>
+            <span class="text-[10px] text-slate-400">1 LE</span>
+          </button>
+          <button type="button" data-preset="analysis10" class="preset-btn px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white border border-slate-200 hover:border-brand-500 hover:text-brand-600 transition text-left flex items-center justify-between shadow-2xs">
+            <span>Analysis (-10..10)</span>
+            <span class="text-[10px] text-slate-400">1 LE</span>
+          </button>
+          <button type="button" data-preset="trigPi" class="preset-btn px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white border border-slate-200 hover:border-brand-500 hover:text-brand-600 transition text-left flex items-center justify-between shadow-2xs">
+            <span>Trigonometrie (π)</span>
+            <span class="text-[10px] text-slate-400">π/4</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Scrollable Settings List -->
+      <div class="flex-1 overflow-y-auto p-4 space-y-5 divide-y divide-slate-100 text-xs">
+
+        <!-- 2. DEFINITIONS- & WERTEBEREICH -->
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <h2 class="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+              <i class="fa-solid fa-arrows-left-right-to-line text-brand-600"></i> Definitions- & Wertebereich
+            </h2>
+            <span id="quadrantBadge" class="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono">4 Quadranten</span>
+          </div>
+
+          <!-- xMin & xMax -->
+          <div>
+            <div class="flex justify-between items-center mb-1">
+              <label class="font-semibold text-slate-700">x-Achse (Definitionsbereich)</label>
+              <span id="xSpanLabel" class="text-[11px] text-slate-400 font-mono">Spanne: 10</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div class="relative">
+                <span class="absolute left-2.5 top-2 text-slate-400 font-medium pointer-events-none">min</span>
+                <input type="number" step="1" id="xMin" value="-5" class="w-full pl-9 pr-2 py-1.5 rounded-lg border border-slate-300 font-mono text-xs focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+              </div>
+              <div class="relative">
+                <span class="absolute left-2.5 top-2 text-slate-400 font-medium pointer-events-none">max</span>
+                <input type="number" step="1" id="xMax" value="5" class="w-full pl-9 pr-2 py-1.5 rounded-lg border border-slate-300 font-mono text-xs focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+              </div>
+            </div>
+          </div>
+
+          <!-- yMin & yMax -->
+          <div>
+            <div class="flex justify-between items-center mb-1">
+              <label class="font-semibold text-slate-700">y-Achse (Wertebereich)</label>
+              <span id="ySpanLabel" class="text-[11px] text-slate-400 font-mono">Spanne: 10</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div class="relative">
+                <span class="absolute left-2.5 top-2 text-slate-400 font-medium pointer-events-none">min</span>
+                <input type="number" step="1" id="yMin" value="-5" class="w-full pl-9 pr-2 py-1.5 rounded-lg border border-slate-300 font-mono text-xs focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+              </div>
+              <div class="relative">
+                <span class="absolute left-2.5 top-2 text-slate-400 font-medium pointer-events-none">max</span>
+                <input type="number" step="1" id="yMax" value="5" class="w-full pl-9 pr-2 py-1.5 rounded-lg border border-slate-300 font-mono text-xs focus:border-brand-500 focus:ring-1 focus:ring-brand-500">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. ACHSENSKALIERUNG (KOMBINIERT SKALIERUNG & ZAHLEN-INTERVALL) -->
+        <div class="pt-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <h2 class="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+              <i class="fa-solid fa-ruler-horizontal text-brand-600"></i> Achsenskalierung
+            </h2>
+            <button type="button" id="toggleSyncAxesBtn" class="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-brand-50 text-brand-700 border border-brand-200 hover:bg-brand-100 transition cursor-pointer">
+              <i class="fa-solid fa-link mr-1"></i><span id="syncAxesLabel">x & y synchron</span>
+            </button>
+          </div>
+
+          <div class="bg-brand-50/70 border border-brand-200 rounded-xl p-3 space-y-3">
+            <!-- Tabs wenn x & y getrennt skaliert werden -->
+            <div id="axisScaleTabs" class="hidden grid-cols-2 gap-1 p-1 bg-white rounded-lg border border-slate-200">
+              <button type="button" data-axis-tab="x" class="axis-tab-btn py-1 rounded-md font-bold text-xs bg-brand-600 text-white transition">
+                x-Achse skalieren
+              </button>
+              <button type="button" data-axis-tab="y" class="axis-tab-btn py-1 rounded-md font-semibold text-xs text-slate-600 hover:bg-slate-100 transition">
+                y-Achse skalieren
+              </button>
+            </div>
+
+            <!-- Wert je Kästchen (0,5 cm) -->
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="font-semibold text-slate-800" id="scaleTargetTitle">Wert je Kästchen (0,5 cm)</label>
+                <span class="text-[11px] font-mono font-bold text-brand-700 bg-white px-2 py-0.5 rounded border border-brand-200" id="scaleExplainBadge">1 LE = 0,5 cm</span>
+              </div>
+
+              <!-- Schnellwahl-Buttons: Standard, Tausender, Pi-Vielfache -->
+              <div class="grid grid-cols-5 gap-1 mb-1.5">
+                <button type="button" data-scale-preset="0.5" class="scale-preset-btn py-1.5 px-1 rounded-lg font-semibold border border-slate-300 bg-white text-slate-700 hover:border-brand-400 transition text-center cursor-pointer">
+                  0,5 LE
+                </button>
+                <button type="button" data-scale-preset="1" class="scale-preset-btn py-1.5 px-1 rounded-lg font-semibold border border-brand-600 bg-brand-600 text-white transition text-center cursor-pointer">
+                  1 LE
+                </button>
+                <button type="button" data-scale-preset="2" class="scale-preset-btn py-1.5 px-1 rounded-lg font-semibold border border-slate-300 bg-white text-slate-700 hover:border-brand-400 transition text-center cursor-pointer">
+                  2 LE
+                </button>
+                <button type="button" data-scale-preset="10" class="scale-preset-btn py-1.5 px-1 rounded-lg font-semibold border border-slate-300 bg-white text-slate-700 hover:border-brand-400 transition text-center cursor-pointer">
+                  10
+                </button>
+                <button type="button" data-scale-preset="100" class="scale-preset-btn py-1.5 px-1 rounded-lg font-semibold border border-slate-300 bg-white text-slate-700 hover:border-brand-400 transition text-center cursor-pointer">
+                  100
+                </button>
+              </div>
+              <div class="grid grid-cols-5 gap-1">
+                <button type="button" data-scale-preset="1000" class="scale-preset-btn py-1.5 px-1 rounded-lg font-semibold border border-slate-300 bg-white text-slate-700 hover:border-brand-400 transition text-center cursor-pointer" title="Tausenderschritte">
+                  1000
+                </button>
+                <button type="button" data-scale-preset="pi/4" class="scale-preset-btn py-1.5 px-1 rounded-lg font-serif font-bold border border-slate-300 bg-white text-slate-700 hover:border-brand-400 transition text-center cursor-pointer" title="Pi Viertel (4 Kästchen = π)">
+                  π/4
+                </button>
+                <button type="button" data-scale-preset="pi/2" class="scale-preset-btn py-1.5 px-1 rounded-lg font-serif font-bold border border-slate-300 bg-white text-slate-700 hover:border-brand-400 transition text-center cursor-pointer" title="Pi Halbe (2 Kästchen = π)">
+                  π/2
+                </button>
+                <button type="button" data-scale-preset="pi" class="scale-preset-btn py-1.5 px-1 rounded-lg font-serif font-bold border border-slate-300 bg-white text-slate-700 hover:border-brand-400 transition text-center cursor-pointer" title="1 Kästchen = π">
+                  π
+                </button>
+                <button type="button" data-scale-preset="custom" class="scale-preset-btn py-1.5 px-1 rounded-lg font-semibold border border-slate-300 bg-white text-slate-700 hover:border-brand-400 transition text-center cursor-pointer">
+                  Eigener
+                </button>
+              </div>
+
+              <!-- Freies Eingabefeld für eigene Skalierung (z.B. 500, 0,25, pi/3, 2*pi) -->
+              <div id="customScaleWrapper" class="mt-2 pt-2 border-t border-brand-200/60 flex items-center justify-between gap-2">
+                <div class="text-[11px] text-slate-700 font-medium leading-tight">
+                  Eigener Wert je Kästchen:<br>
+                  <span class="text-[10px] text-slate-500 font-normal">(z.B. <code class="bg-white px-1 rounded">500</code>, <code class="bg-white px-1 rounded">0,25</code>, <code class="bg-white px-1 rounded">pi/3</code>)</span>
+                </div>
+                <div class="flex items-center gap-1">
+                  <input type="text" id="scaleExprInput" value="1" class="w-24 px-2 py-1 rounded-lg border border-brand-400 bg-white font-mono text-xs text-right font-bold focus:ring-1 focus:ring-brand-500">
+                  <button type="button" id="fitDomainToScaleBtn" class="px-2 py-1 rounded-lg bg-brand-100 hover:bg-brand-200 text-brand-800 font-semibold text-[11px] transition cursor-pointer" title="Definitions-/Wertebereich automatisch auf ±10 Kästchen dieser Skalierung anpassen">
+                    Bereich anpassen
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Zahlen-Intervall (integriert unter Achsenskalierung) -->
+            <div class="pt-2 border-t border-brand-200/70">
+              <div class="flex justify-between items-center mb-1">
+                <label class="font-semibold text-slate-800">Zahlen-Intervall (Beschriftung)</label>
+                <span class="text-[11px] text-brand-700 font-mono font-semibold" id="labelEveryHint">jedes 2. Kästchen</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <select id="labelIntervalSelect" class="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium focus:border-brand-500">
+                  <option value="1">Jedes Kästchen beschriften (alle 0,5 cm)</option>
+                  <option value="2" selected>Jedes 2. Kästchen beschriften (alle 1,0 cm)</option>
+                  <option value="4">Jedes 4. Kästchen beschriften (alle 2,0 cm)</option>
+                  <option value="5">Jedes 5. Kästchen beschriften (alle 2,5 cm)</option>
+                  <option value="10">Jedes 10. Kästchen beschriften (alle 5,0 cm)</option>
+                </select>
+                <div class="flex items-center gap-1 shrink-0" title="Eigenes Kästchen-Intervall">
+                  <span class="text-[11px] text-slate-500">Alle</span>
+                  <input type="number" id="labelIntervalCustom" value="2" min="1" max="50" step="1" class="w-14 px-1.5 py-1.5 rounded-lg border border-slate-300 bg-white font-mono text-xs text-center">
+                  <span class="text-[11px] text-slate-500">K.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. ACHSEN & BESCHRIFTUNG -->
+        <div class="pt-4 space-y-3">
+          <h2 class="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+            <i class="fa-solid fa-signature text-brand-600"></i> Achsen & Beschriftung
+          </h2>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Achsenname x</label>
+              <input type="text" id="labelX" value="x" placeholder="z.B. x, Zeit t in s" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs focus:border-brand-500">
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Achsenname y</label>
+              <input type="text" id="labelY" value="y" placeholder="z.B. y, Weg s in m" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs focus:border-brand-500">
+            </div>
+          </div>
+
+          <!-- Schriftgröße -->
+          <div>
+            <div class="flex justify-between items-center mb-1">
+              <label class="font-semibold text-slate-700">Schriftgröße der Achsenwerte</label>
+              <span id="fontSizeVal" class="font-mono text-slate-500">11 pt</span>
+            </div>
+            <input type="range" id="fontSize" min="8" max="18" step="1" value="11" class="w-full accent-brand-600 cursor-pointer">
+          </div>
+
+          <!-- Checkbox-Optionen für Achsen -->
+          <div class="grid grid-cols-2 gap-2 pt-1">
+            <label class="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-slate-50/60 cursor-pointer hover:bg-slate-100">
+              <input type="checkbox" id="showArrows" checked class="rounded text-brand-600 focus:ring-brand-500">
+              <span class="font-medium text-slate-700">Achsenpfeile</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-slate-50/60 cursor-pointer hover:bg-slate-100">
+              <input type="checkbox" id="showTicks" checked class="rounded text-brand-600 focus:ring-brand-500">
+              <span class="font-medium text-slate-700">Skalenstriche</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-slate-50/60 cursor-pointer hover:bg-slate-100">
+              <input type="checkbox" id="showNumbers" checked class="rounded text-brand-600 focus:ring-brand-500">
+              <span class="font-medium text-slate-700">Zahlenwerte</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-slate-50/60 cursor-pointer hover:bg-slate-100">
+              <input type="checkbox" id="showOrigin" checked class="rounded text-brand-600 focus:ring-brand-500">
+              <span class="font-medium text-slate-700">Nullpunkt „0“</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- 5. ERWEITERTE EINSTELLUNGEN (GANZ UNTEN) -->
+        <div class="pt-4">
+          <details id="advancedSettingsDetails" class="group bg-slate-50 border border-slate-200 rounded-xl overflow-hidden">
+            <summary class="px-3.5 py-2.5 cursor-pointer flex items-center justify-between font-bold text-slate-800 hover:bg-slate-100 transition select-none">
+              <span class="flex items-center gap-2 text-xs uppercase tracking-wider">
+                <i class="fa-solid fa-sliders text-brand-600"></i>
+                Erweiterte Einstellungen
+              </span>
+              <i class="fa-solid fa-chevron-down text-slate-400 transition-transform duration-200 group-open:rotate-180"></i>
+            </summary>
+
+            <div class="p-3.5 pt-2 border-t border-slate-200 space-y-4 bg-white">
+              
+              <!-- 5a) Dezimaltrennzeichen (Standard: Komma) -->
+              <div class="space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-slate-800 flex items-center gap-1.5">
+                    <i class="fa-solid fa-language text-brand-600"></i> Dezimaltrennzeichen
+                  </span>
+                  <span class="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded font-medium">DE-Standard</span>
+                </div>
+                <div class="grid grid-cols-2 gap-1.5">
+                  <button type="button" data-dec-sep="comma" class="dec-sep-btn py-1.5 px-2 rounded-lg font-semibold border border-brand-600 bg-brand-600 text-white transition text-center cursor-pointer">
+                    Komma (0,5)
+                  </button>
+                  <button type="button" data-dec-sep="dot" class="dec-sep-btn py-1.5 px-2 rounded-lg font-semibold border border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100 transition text-center cursor-pointer">
+                    Punkt (0.5)
+                  </button>
+                </div>
+              </div>
+
+              <!-- 5b) Kästchengröße im Druck -->
+              <div class="pt-3 border-t border-slate-100 space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-slate-800 flex items-center gap-1.5">
+                    <i class="fa-solid fa-table-cells text-brand-600"></i> Kästchengröße im Druck
+                  </span>
+                  <span class="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded font-medium">Standard: 0,5 cm</span>
+                </div>
+                <div class="grid grid-cols-3 gap-1.5">
+                  <button type="button" data-cm="0.5" class="cm-btn py-1.5 px-2 rounded-lg font-semibold border border-brand-600 bg-brand-600 text-white transition text-center cursor-pointer">
+                    0,5 cm (Heft)
+                  </button>
+                  <button type="button" data-cm="1.0" class="cm-btn py-1.5 px-2 rounded-lg font-semibold border border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100 transition text-center cursor-pointer">
+                    1,0 cm (Groß)
+                  </button>
+                  <div class="relative">
+                    <input type="number" id="gridSpacingCm" value="0.5" min="0.2" max="5" step="0.1" class="w-full h-full pl-2 pr-6 py-1 rounded-lg border border-slate-300 bg-white font-mono text-xs text-center focus:border-brand-500" title="Eigener Gitterabstand in cm">
+                    <span class="absolute right-1.5 top-1.5 text-[10px] text-slate-400 pointer-events-none">cm</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 5c) Gitter & Kästchen-Look -->
+              <div class="pt-3 border-t border-slate-100 space-y-2.5">
+                <span class="font-bold text-slate-800 flex items-center gap-1.5">
+                  <i class="fa-solid fa-border-all text-brand-600"></i> Gitter & Kästchen-Look
+                </span>
+
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <label class="block font-medium text-slate-600 mb-1">Gitter-Stil</label>
+                    <select id="gridType" class="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-xs">
+                      <option value="solid" selected>Durchgezogen (Kästchen)</option>
+                      <option value="dashed">Gestrichelt</option>
+                      <option value="dotted">Gepunktet</option>
+                      <option value="none">Kein Gitter</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block font-medium text-slate-600 mb-1">Gitterfarbe</label>
+                    <div class="flex items-center gap-1.5">
+                      <input type="color" id="gridColor" value="#cbd5e1" class="w-7 h-7 rounded cursor-pointer border border-slate-300 p-0.5 bg-white shrink-0">
+                      <button type="button" data-gridcolor="#cbd5e1" class="color-preset px-1.5 py-1 text-[10px] rounded border border-slate-200 bg-slate-100 hover:bg-slate-200">Grau</button>
+                      <button type="button" data-gridcolor="#93c5fd" class="color-preset px-1.5 py-1 text-[10px] rounded border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100">Heftblau</button>
+                      <button type="button" data-gridcolor="#94a3b8" class="color-preset px-1.5 py-1 text-[10px] rounded border border-slate-300 bg-slate-200 text-slate-800 hover:bg-slate-300">Dunkel</button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Feines Millimeter-/Zwischengitter -->
+                <div class="bg-slate-50 p-2 rounded-lg border border-slate-200 flex items-center justify-between">
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" id="showSubgrid" class="rounded text-brand-600 focus:ring-brand-500">
+                    <span class="font-medium text-slate-700">Zwischengitter (Unterteilung)</span>
+                  </label>
+                  <select id="subgridCount" class="px-2 py-1 rounded border border-slate-300 bg-white text-xs">
+                    <option value="2">2er (2,5 mm)</option>
+                    <option value="5" selected>5er (1 mm)</option>
+                  </select>
+                </div>
+
+                <!-- Achsenstärke -->
+                <div>
+                  <label class="block font-medium text-slate-600 mb-1">Linienstärke der Hauptachsen</label>
+                  <select id="axisWidth" class="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-xs">
+                    <option value="1.5">Dünn (1,5 pt)</option>
+                    <option value="2" selected>Standard (2,0 pt)</option>
+                    <option value="2.8">Kräftig für Kopierer (2,8 pt)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- 5d) Druck-Optionen -->
+              <div class="pt-3 border-t border-slate-100 space-y-2.5">
+                <span class="font-bold text-slate-800 flex items-center gap-1.5">
+                  <i class="fa-solid fa-print text-brand-600"></i> Druck-Optionen
+                </span>
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <label class="block font-medium text-slate-600 mb-1">Auflösung (DPI)</label>
+                    <select id="dpiSelect" class="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-xs">
+                      <option value="96">96 DPI (Bildschirm)</option>
+                      <option value="150">150 DPI (Entwurf)</option>
+                      <option value="300" selected>300 DPI (Druck-Standard)</option>
+                      <option value="600">600 DPI (Hochauflösend)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block font-medium text-slate-600 mb-1">Mindest-Außenrand</label>
+                    <select id="marginCm" class="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-xs">
+                      <option value="0.4">Knapp (0,4 cm)</option>
+                      <option value="0.7" selected>Optimal (0,7 cm)</option>
+                      <option value="1.0">Komfortabel (1,0 cm)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </details>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- RIGHT AREA: INTERACTIVE LIVE PREVIEW WITH RULERS -->
+    <main class="flex-1 flex flex-col h-3/5 lg:h-full overflow-hidden relative checkerboard">
+      
+      <!-- Floating Zoom & Scale Control Bar -->
+      <div class="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-10">
+        <div class="bg-white/95 backdrop-blur-xs border border-slate-200/90 shadow-sm rounded-xl px-3 py-1.5 text-xs text-slate-700 flex items-center gap-2 pointer-events-auto">
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span id="scaleSummaryTag" class="font-medium">1 Kästchen = 0,5 cm | 1 LE</span>
+        </div>
+
+        <!-- Zoom Controls -->
+        <div class="bg-white/95 backdrop-blur-xs border border-slate-200/90 shadow-sm rounded-xl p-1 flex items-center gap-1 pointer-events-auto">
+          <button type="button" id="zoomOutBtn" class="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-700 flex items-center justify-center text-xs cursor-pointer" title="Verkleinern">
+            <i class="fa-solid fa-minus"></i>
+          </button>
+          <span id="zoomLabel" class="px-2 text-xs font-mono font-semibold text-slate-700 min-w-[52px] text-center">Passend</span>
+          <button type="button" id="zoomInBtn" class="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-700 flex items-center justify-center text-xs cursor-pointer" title="Vergrößern">
+            <i class="fa-solid fa-plus"></i>
+          </button>
+          <button type="button" id="zoomFitBtn" class="px-2 py-1 rounded-lg hover:bg-slate-100 text-xs font-medium text-brand-600 cursor-pointer" title="Auf Bildschirmgröße einpassen">
+            Einpassen
+          </button>
+          <button type="button" id="zoom100Btn" class="px-2 py-1 rounded-lg hover:bg-slate-100 text-xs font-medium text-slate-600 cursor-pointer" title="100% Bildschirm-Ansicht">
+            100%
+          </button>
+        </div>
+      </div>
+
+      <!-- Scrollable Canvas Viewport -->
+      <div id="viewportContainer" class="flex-1 overflow-auto flex items-center justify-center p-6 sm:p-12">
+        <div id="canvasCard" class="bg-white shadow-xl border border-slate-300/80 transition-all duration-75 relative">
+          <canvas id="mainCanvas" class="block"></canvas>
+        </div>
+      </div>
+
+      <!-- Toast Notification -->
+      <div id="toast" class="fixed bottom-5 right-5 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl border border-slate-700 flex items-center gap-3 transform translate-y-24 opacity-0 transition-all duration-300 pointer-events-none z-50">
+        <div id="toastIconWrap" class="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+          <i id="toastIcon" class="fa-solid fa-check"></i>
+        </div>
+        <div>
+          <p id="toastTitle" class="text-xs font-bold">In Zwischenablage kopiert!</p>
+          <p id="toastSub" class="text-[11px] text-slate-300">Drücke Strg+V in deinem Arbeitsblatt (Word, Docs, etc.)</p>
+        </div>
+      </div>
+    </main>
+
+  </div>
+
+  <script>
+    /**
+     * Zentraler State des Koordinatensystems
+     * Alle Maße basieren auf echten Zentimetern (Standard: 0.5 cm Kästchenpapier)
+     */
+    const state = {
+      xMin: -5,
+      xMax: 5,
+      yMin: -5,
+      yMax: 5,
+      gridSpacingCm: 0.5,       // 0.5 cm = Standard-Rechenkästchen
+      syncAxes: true,           // x & y Achse synchron oder getrennt skalieren
+      activeScaleAxis: 'x',     // Aktiver Tab wenn syncAxes === false ('x' oder 'y')
+      unitsPerGridX: 1,         // Wert je Kästchen auf der x-Achse
+      unitsPerGridY: 1,         // Wert je Kästchen auf der y-Achse
+      scaleExprX: '1',          // Textausdruck für x-Skalierung (z.B. '1', '1000', 'pi/2')
+      scaleExprY: '1',          // Textausdruck für y-Skalierung
+      scalePresetModeX: '1',
+      scalePresetModeY: '1',
+      labelIntervalX: 2,        // Jedes n-te Kästchen auf x beschriften
+      labelIntervalY: 2,        // Jedes n-te Kästchen auf y beschriften
+      decimalSeparator: 'comma',// 'comma' (Standard: 0,5) oder 'dot' (0.5)
+      dpi: 300,                 // Druckauflösung (Pixel pro Zoll)
+      marginCm: 0.7,            // Mindest-Rand um das Gitter in cm
+      gridType: 'solid',
+      gridColor: '#cbd5e1',
+      showSubgrid: false,
+      subgridCount: 5,
+      axisColor: '#0f172a',
+      axisWidth: 2,
+      showArrows: true,
+      showTicks: true,
+      showNumbers: true,
+      showOrigin: true,
+      labelX: 'x',
+      labelY: 'y',
+      fontSize: 11,
+      bgTransparent: false,
+      zoomMode: 'fit',          // 'fit' oder numerischer Faktor (z.B. 1.0)
+      zoomFactor: 1.0
+    };
+
+    // Hilfs-Canvas für präzise Textbreiten-Messung (für automatische Bildverbreiterung)
+    const measureCanvas = document.createElement('canvas');
+    const measureCtx = measureCanvas.getContext('2d');
+
+    // DOM-Referenzen
+    const canvas = document.getElementById('mainCanvas');
+    const ctx = canvas.getContext('2d');
+    const viewportContainer = document.getElementById('viewportContainer');
+    const canvasCard = document.getElementById('canvasCard');
+
+    const inputs = {
+      xMin: document.getElementById('xMin'),
+      xMax: document.getElementById('xMax'),
+      yMin: document.getElementById('yMin'),
+      yMax: document.getElementById('yMax'),
+      gridSpacingCm: document.getElementById('gridSpacingCm'),
+      scaleExprInput: document.getElementById('scaleExprInput'),
+      labelIntervalSelect: document.getElementById('labelIntervalSelect'),
+      labelIntervalCustom: document.getElementById('labelIntervalCustom'),
+      dpiSelect: document.getElementById('dpiSelect'),
+      marginCm: document.getElementById('marginCm'),
+      gridType: document.getElementById('gridType'),
+      gridColor: document.getElementById('gridColor'),
+      showSubgrid: document.getElementById('showSubgrid'),
+      subgridCount: document.getElementById('subgridCount'),
+      axisWidth: document.getElementById('axisWidth'),
+      showArrows: document.getElementById('showArrows'),
+      showTicks: document.getElementById('showTicks'),
+      showNumbers: document.getElementById('showNumbers'),
+      showOrigin: document.getElementById('showOrigin'),
+      labelX: document.getElementById('labelX'),
+      labelY: document.getElementById('labelY'),
+      fontSize: document.getElementById('fontSize'),
+      bgTransparent: document.getElementById('bgTransparent')
+    };
+
+    // UI-Anzeigeelemente
+    const physicalDimText = document.getElementById('physicalDimText');
+    const pixelDimText = document.getElementById('pixelDimText');
+    const boxCountText = document.getElementById('boxCountText');
+    const scaleSummaryTag = document.getElementById('scaleSummaryTag');
+    const scaleExplainBadge = document.getElementById('scaleExplainBadge');
+    const labelEveryHint = document.getElementById('labelEveryHint');
+    const xSpanLabel = document.getElementById('xSpanLabel');
+    const ySpanLabel = document.getElementById('ySpanLabel');
+    const quadrantBadge = document.getElementById('quadrantBadge');
+    const fontSizeVal = document.getElementById('fontSizeVal');
+    const zoomLabel = document.getElementById('zoomLabel');
+
+    /**
+     * Sicheres Parsen von Zahleneingaben (auch Komma, Pi-Ausdrücke und explizit 0!).
+     * Behebt den 0-Wert-Bug zuverlässig.
+     */
+    function parseMathInput(rawVal, fallback) {
+      if (rawVal === '' || rawVal === null || rawVal === undefined) return fallback;
+      let str = String(rawVal).trim().toLowerCase().replace(',', '.');
+      if (str === '' || str === '-' || str === '+') return fallback;
+
+      // Unterstützung für Pi-Ausdrücke wie "pi", "2pi", "pi/2", "3*pi/4", "-2*pi"
+      if (str.includes('pi') || str.includes('π')) {
+        str = str.replace(/π/g, 'pi');
+        const piMatch = str.match(/^([+-]?\d*\.?\d*)\s*\*?\s*pi(?:\s*\/\s*(\d+\.?\d*))?$/);
+        if (piMatch) {
+          let coeffStr = piMatch[1];
+          let coeff = 1;
+          if (coeffStr === '-' || coeffStr === '+') {
+            coeff = coeffStr === '-' ? -1 : 1;
+          } else if (coeffStr !== '') {
+            coeff = Number(coeffStr);
+          }
+          const denom = piMatch[2] ? Number(piMatch[2]) : 1;
+          if (Number.isFinite(coeff) && Number.isFinite(denom) && denom !== 0) {
+            return (coeff * Math.PI) / denom;
+          }
+        }
+      }
+
+      // Unterstützung für einfache Brüche wie "1/4" oder "3/2"
+      if (str.includes('/')) {
+        const parts = str.split('/');
+        if (parts.length === 2) {
+          const num = Number(parts[0]);
+          const den = Number(parts[1]);
+          if (Number.isFinite(num) && Number.isFinite(den) && den !== 0) {
+            return num / den;
+          }
+        }
+      }
+
+      const num = Number(str);
+      return Number.isFinite(num) ? num : fallback;
+    }
+
+    /**
+     * Prüft, ob ein Skalierungsausdruck auf der Kreiszahl Pi basiert.
+     */
+    function isPiScale(axis) {
+      const expr = (axis === 'x' ? state.scaleExprX : state.scaleExprY).toLowerCase();
+      if (expr.includes('pi') || expr.includes('π')) return true;
+      const val = axis === 'x' ? state.unitsPerGridX : state.unitsPerGridY;
+      const ratio = val / (Math.PI / 12);
+      return Math.abs(ratio - Math.round(ratio)) < 1e-4 && val > 0;
+    }
+
+    /**
+     * Größter gemeinsamer Teiler zum Kürzen von Pi-Brüchen (z.B. 2π/4 -> π/2)
+     */
+    function gcd(a, b) {
+      a = Math.abs(Math.round(a));
+      b = Math.abs(Math.round(b));
+      while (b > 0) {
+        const t = b;
+        b = a % b;
+        a = t;
+      }
+      return a || 1;
+    }
+
+    /**
+     * Formatiert eine Dezimalzahl mit Komma (Standard) oder Punkt.
+     */
+    function formatNumberWithSep(num) {
+      const rounded = Math.round(num * 100000) / 100000;
+      const str = rounded.toString();
+      return state.decimalSeparator === 'comma' ? str.replace('.', ',') : str;
+    }
+
+    /**
+     * Formatiert einen numerischen Wert für die Number-Inputs.
+     */
+    function formatDomainInputValue(val) {
+      if (Math.abs(val) < 1e-9) return '0';
+      return String(Math.round(val * 10000) / 10000);
+    }
+
+    /**
+     * Formatiert die Achsen-Zahlenwerte (inkl. echter Pi-Brüche wie -π/2, π, 3π/2, 2π).
+     */
+    function formatAxisTickValue(val, axis) {
+      if (Math.abs(val) < 1e-9) return '0';
+
+      if (isPiScale(axis)) {
+        const twelveN = Math.round((val / Math.PI) * 12);
+        if (Math.abs((twelveN / 12) * Math.PI - val) < 1e-3) {
+          if (twelveN === 0) return '0';
+          const sign = twelveN < 0 ? '-' : '';
+          const absN = Math.abs(twelveN);
+          const g = gcd(absN, 12);
+          const num = absN / g;
+          const den = 12 / g;
+          const piPart = num === 1 ? 'π' : `${num}π`;
+          return den === 1 ? `${sign}${piPart}` : `${sign}${piPart}/${den}`;
+        }
+      }
+
+      return formatNumberWithSep(val);
+    }
+
+    /**
+     * Berechnung aller physischen & darstellungsrelevanten Maße
+     * inklusive automatischer Bildverbreiterung für lange Achsenbeschriftungen und Zahlenwerte!
+     */
+    function computeDimensions() {
+      const xRange = Math.max(1e-6, Math.abs(state.xMax - state.xMin));
+      const yRange = Math.max(1e-6, Math.abs(state.yMax - state.yMin));
+
+      // Wie viele Kästchen entspricht das auf X und Y?
+      const numBoxesX = Math.max(1, xRange / state.unitsPerGridX);
+      const numBoxesY = Math.max(1, yRange / state.unitsPerGridY);
+
+      // Physische Größe des Gitters in cm (exakt 1:1 nach Kästchengröße)
+      const plotWidthCm = numBoxesX * state.gridSpacingCm;
+      const plotHeightCm = numBoxesY * state.gridSpacingCm;
+
+      // Umrechnung in Pixel anhand der gewählten DPI (1 inch = 2.54 cm)
+      const pixelsPerCm = state.dpi / 2.54;
+      const baseMarginPx = Math.round(state.marginCm * pixelsPerCm);
+      const plotWidthPx = Math.round(plotWidthCm * pixelsPerCm);
+      const plotHeightPx = Math.round(plotHeightCm * pixelsPerCm);
+
+      const scaleRef = state.dpi / 300;
+      const arrowExtraPx = state.showArrows ? 26 * scaleRef : 0;
+      const tickSizePx = state.showTicks ? 6 * scaleRef : 0;
+      const fontSizePx = Math.round(state.fontSize * scaleRef * 2.2);
+      const labelFontPx = Math.round(fontSizePx * 1.25);
+      const edgePadPx = Math.round(14 * scaleRef);
+
+      // Relative Lage der Achsen innerhalb des Gitterbereichs [0 .. plotWidthPx] bzw. [0 .. plotHeightPx]
+      const hasXAxis = (state.yMin <= 0 && state.yMax >= 0);
+      const hasYAxis = (state.xMin <= 0 && state.xMax >= 0);
+      const relOriginX = ((0 - state.xMin) / xRange) * plotWidthPx;
+      const relOriginY = ((state.yMax - 0) / yRange) * plotHeightPx;
+      const relXAxisX = hasYAxis ? relOriginX : (state.xMin >= 0 ? 0 : plotWidthPx);
+      const relYAxisY = hasXAxis ? relOriginY : (state.yMin >= 0 ? plotHeightPx : 0);
+
+      let padLeftPx = baseMarginPx;
+      let padRightPx = baseMarginPx;
+      let padTopPx = baseMarginPx;
+      let padBottomPx = baseMarginPx;
+
+      // 1. Platzbedarf für Pfeilspitzen prüfen
+      padRightPx = Math.max(padRightPx, Math.ceil(arrowExtraPx + edgePadPx));
+      padTopPx = Math.max(padTopPx, Math.ceil(arrowExtraPx + edgePadPx));
+
+      // 2. Platzbedarf für Achsenbeschriftung X und Y messen und Bild bei Bedarf verbreitern
+      measureCtx.font = `italic bold ${labelFontPx}px "Times New Roman", Times, serif`;
+
+      if (state.labelX && state.labelX.trim().length > 0) {
+        const labelXWidth = measureCtx.measureText(state.labelX).width;
+        const neededRight = Math.ceil(arrowExtraPx + (8 * scaleRef) + labelXWidth + edgePadPx);
+        padRightPx = Math.max(padRightPx, neededRight);
+
+        const neededTopForXLabel = Math.ceil((labelFontPx * 0.7) - relYAxisY + edgePadPx);
+        const neededBottomForXLabel = Math.ceil((labelFontPx * 0.7) - (plotHeightPx - relYAxisY) + edgePadPx);
+        padTopPx = Math.max(padTopPx, neededTopForXLabel);
+        padBottomPx = Math.max(padBottomPx, neededBottomForXLabel);
+      }
+
+      if (state.labelY && state.labelY.trim().length > 0) {
+        const labelYWidth = measureCtx.measureText(state.labelY).width;
+        const halfYWidth = labelYWidth / 2;
+
+        // Y-Achsenname sitzt zentriert über der Y-Achse bei relXAxisX
+        const neededTop = Math.ceil(arrowExtraPx + (6 * scaleRef) + labelFontPx + edgePadPx);
+        padTopPx = Math.max(padTopPx, neededTop);
+
+        const neededLeftForYLabel = Math.ceil(halfYWidth - relXAxisX + edgePadPx);
+        const neededRightForYLabel = Math.ceil(halfYWidth - (plotWidthPx - relXAxisX) + edgePadPx);
+        padLeftPx = Math.max(padLeftPx, neededLeftForYLabel);
+        padRightPx = Math.max(padRightPx, neededRightForYLabel);
+      }
+
+      // 3. Platzbedarf für Zahlenwerte an den Achsen prüfen
+      if (state.showNumbers) {
+        measureCtx.font = `600 ${fontSizePx}px Inter, -apple-system, system-ui, sans-serif`;
+
+        // X-Achse Zahlen (unterhalb von relYAxisY sowie links/rechts überstehende Zahlen)
+        const stepX = state.unitsPerGridX;
+        const firstTickIdxX = Math.ceil((state.xMin - 1e-9) / stepX);
+        const lastTickIdxX = Math.floor((state.xMax + 1e-9) / stepX);
+        for (let idx = firstTickIdxX; idx <= lastTickIdxX; idx++) {
+          if (idx === 0 || (idx % state.labelIntervalX !== 0)) continue;
+          const x = idx * stepX;
+          const relPx = ((x - state.xMin) / xRange) * plotWidthPx;
+          const numStr = formatAxisTickValue(x, 'x');
+          const halfW = measureCtx.measureText(numStr).width / 2;
+
+          padLeftPx = Math.max(padLeftPx, Math.ceil(halfW - relPx + edgePadPx));
+          padRightPx = Math.max(padRightPx, Math.ceil(halfW - (plotWidthPx - relPx) + edgePadPx));
+        }
+
+        const neededBottomForXNums = Math.ceil(tickSizePx + (5 * scaleRef) + fontSizePx + edgePadPx - (plotHeightPx - relYAxisY));
+        padBottomPx = Math.max(padBottomPx, neededBottomForXNums);
+
+        // Y-Achse Zahlen (links neben relXAxisX)
+        const stepY = state.unitsPerGridY;
+        const firstTickIdxY = Math.ceil((state.yMin - 1e-9) / stepY);
+        const lastTickIdxY = Math.floor((state.yMax + 1e-9) / stepY);
+        for (let idx = firstTickIdxY; idx <= lastTickIdxY; idx++) {
+          if (idx === 0 || (idx % state.labelIntervalY !== 0)) continue;
+          const y = idx * stepY;
+          const numStr = formatAxisTickValue(y, 'y');
+          const w = measureCtx.measureText(numStr).width;
+          const neededLeft = Math.ceil(tickSizePx + (6 * scaleRef) + w + edgePadPx - relXAxisX);
+          padLeftPx = Math.max(padLeftPx, neededLeft);
+        }
+      }
+
+      const totalWidthPx = Math.max(50, padLeftPx + plotWidthPx + padRightPx);
+      const totalHeightPx = Math.max(50, padTopPx + plotHeightPx + padBottomPx);
+
+      const padLeftCm = padLeftPx / pixelsPerCm;
+      const padRightCm = padRightPx / pixelsPerCm;
+      const padTopCm = padTopPx / pixelsPerCm;
+      const padBottomCm = padBottomPx / pixelsPerCm;
+
+      const totalWidthCm = plotWidthCm + padLeftCm + padRightCm;
+      const totalHeightCm = plotHeightCm + padTopCm + padBottomCm;
+
+      return {
+        xRange,
+        yRange,
+        numBoxesX,
+        numBoxesY,
+        plotWidthCm,
+        plotHeightCm,
+        totalWidthCm,
+        totalHeightCm,
+        totalWidthPx,
+        totalHeightPx,
+        padLeftPx,
+        padRightPx,
+        padTopPx,
+        padBottomPx,
+        padLeftCm,
+        padRightCm,
+        padTopCm,
+        padBottomCm,
+        plotWidthPx,
+        plotHeightPx,
+        pixelsPerCm
+      };
+    }
+
+    /**
+     * Zeichnet das Koordinatensystem auf das angegebene Canvas-Element.
+     */
+    function renderCoordinateSystem(targetCanvas = canvas, forceWhiteBackground = false) {
+      const dim = computeDimensions();
+      const targetCtx = targetCanvas.getContext('2d');
+
+      // UI-Info-Leiste aktualisieren
+      if (targetCanvas === canvas) {
+        physicalDimText.textContent = `${formatNumberWithSep(Number(dim.totalWidthCm.toFixed(1)))} cm × ${formatNumberWithSep(Number(dim.totalHeightCm.toFixed(1)))} cm`;
+        pixelDimText.textContent = `${dim.totalWidthPx} × ${dim.totalHeightPx} px`;
+        boxCountText.textContent = `${formatNumberWithSep(Math.round(dim.numBoxesX * 10) / 10)} × ${formatNumberWithSep(Math.round(dim.numBoxesY * 10) / 10)} Kästchen`;
+
+        const xScaleLabel = formatAxisTickValue(state.unitsPerGridX, 'x');
+        const yScaleLabel = formatAxisTickValue(state.unitsPerGridY, 'y');
+        const cmFormatted = formatNumberWithSep(Number(state.gridSpacingCm.toFixed(1)));
+
+        if (state.syncAxes || xScaleLabel === yScaleLabel) {
+          scaleSummaryTag.textContent = `1 Kästchen = ${cmFormatted} cm | ${xScaleLabel} LE`;
+        } else {
+          scaleSummaryTag.textContent = `1 K. = ${cmFormatted} cm | x: ${xScaleLabel}, y: ${yScaleLabel}`;
+        }
+
+        xSpanLabel.textContent = `Spanne: ${formatAxisTickValue(dim.xRange, 'x')}`;
+        ySpanLabel.textContent = `Spanne: ${formatAxisTickValue(dim.yRange, 'y')}`;
+        fontSizeVal.textContent = `${state.fontSize} pt`;
+
+        if (state.xMin >= 0 && state.yMin >= 0) {
+          quadrantBadge.textContent = '1. Quadrant';
+          quadrantBadge.className = 'text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-mono font-medium';
+        } else {
+          quadrantBadge.textContent = '4 Quadranten';
+          quadrantBadge.className = 'text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono';
+        }
+      }
+
+      targetCanvas.width = dim.totalWidthPx;
+      targetCanvas.height = dim.totalHeightPx;
+
+      targetCtx.save();
+      targetCtx.clearRect(0, 0, dim.totalWidthPx, dim.totalHeightPx);
+
+      // Hintergrund (Weiß wenn nicht transparent oder wenn für JPG erzwungen)
+      if (!state.bgTransparent || forceWhiteBackground) {
+        targetCtx.fillStyle = '#ffffff';
+        targetCtx.fillRect(0, 0, dim.totalWidthPx, dim.totalHeightPx);
+      }
+
+      const plotLeft = dim.padLeftPx;
+      const plotRight = dim.padLeftPx + dim.plotWidthPx;
+      const plotTop = dim.padTopPx;
+      const plotBottom = dim.padTopPx + dim.plotHeightPx;
+
+      function toScreenX(x) {
+        return plotLeft + ((x - state.xMin) / dim.xRange) * dim.plotWidthPx;
+      }
+
+      function toScreenY(y) {
+        return plotTop + ((state.yMax - y) / dim.yRange) * dim.plotHeightPx;
+      }
+
+      const originX = toScreenX(0);
+      const originY = toScreenY(0);
+      const scaleRef = state.dpi / 300;
+
+      // 1. Feines Zwischengitter (Subgrid)
+      if (state.showSubgrid && state.gridType !== 'none') {
+        const subUnitStepX = state.unitsPerGridX / state.subgridCount;
+        const subUnitStepY = state.unitsPerGridY / state.subgridCount;
+        targetCtx.beginPath();
+        targetCtx.strokeStyle = state.gridColor;
+        targetCtx.lineWidth = Math.max(0.5, 0.75 * scaleRef);
+        targetCtx.globalAlpha = 0.45;
+        targetCtx.setLineDash([]);
+
+        const firstSubIdxX = Math.ceil((state.xMin - 1e-9) / subUnitStepX);
+        const lastSubIdxX = Math.floor((state.xMax + 1e-9) / subUnitStepX);
+        for (let i = firstSubIdxX; i <= lastSubIdxX; i++) {
+          const px = toScreenX(i * subUnitStepX);
+          targetCtx.moveTo(px, plotTop);
+          targetCtx.lineTo(px, plotBottom);
+        }
+
+        const firstSubIdxY = Math.ceil((state.yMin - 1e-9) / subUnitStepY);
+        const lastSubIdxY = Math.floor((state.yMax + 1e-9) / subUnitStepY);
+        for (let j = firstSubIdxY; j <= lastSubIdxY; j++) {
+          const py = toScreenY(j * subUnitStepY);
+          targetCtx.moveTo(plotLeft, py);
+          targetCtx.lineTo(plotRight, py);
+        }
+        targetCtx.stroke();
+        targetCtx.globalAlpha = 1.0;
+      }
+
+      // 2. Hauptgitter (Kästchenpapier)
+      if (state.gridType !== 'none') {
+        targetCtx.beginPath();
+        targetCtx.strokeStyle = state.gridColor;
+        targetCtx.lineWidth = 1.25 * scaleRef;
+
+        if (state.gridType === 'dashed') {
+          targetCtx.setLineDash([6 * scaleRef, 6 * scaleRef]);
+        } else if (state.gridType === 'dotted') {
+          targetCtx.setLineDash([2 * scaleRef, 4 * scaleRef]);
+        } else {
+          targetCtx.setLineDash([]);
+        }
+
+        const unitStepX = state.unitsPerGridX;
+        const unitStepY = state.unitsPerGridY;
+
+        const firstIdxX = Math.ceil((state.xMin - 1e-9) / unitStepX);
+        const lastIdxX = Math.floor((state.xMax + 1e-9) / unitStepX);
+        for (let i = firstIdxX; i <= lastIdxX; i++) {
+          const px = toScreenX(i * unitStepX);
+          targetCtx.moveTo(px, plotTop);
+          targetCtx.lineTo(px, plotBottom);
+        }
+
+        const firstIdxY = Math.ceil((state.yMin - 1e-9) / unitStepY);
+        const lastIdxY = Math.floor((state.yMax + 1e-9) / unitStepY);
+        for (let j = firstIdxY; j <= lastIdxY; j++) {
+          const py = toScreenY(j * unitStepY);
+          targetCtx.moveTo(plotLeft, py);
+          targetCtx.lineTo(plotRight, py);
+        }
+        targetCtx.stroke();
+        targetCtx.setLineDash([]);
+      }
+
+      // 3. Koordinatenachsen
+      targetCtx.strokeStyle = state.axisColor;
+      targetCtx.fillStyle = state.axisColor;
+      targetCtx.lineWidth = state.axisWidth * scaleRef * 1.5;
+
+      const hasXAxis = (state.yMin <= 0 && state.yMax >= 0);
+      const hasYAxis = (state.xMin <= 0 && state.xMax >= 0);
+
+      const yAxisY = hasXAxis ? originY : (state.yMin >= 0 ? plotBottom : plotTop);
+      const xAxisX = hasYAxis ? originX : (state.xMin >= 0 ? plotLeft : plotRight);
+
+      const arrowExtra = state.showArrows ? 26 * scaleRef : 0;
+
+      // X-Achse
+      targetCtx.beginPath();
+      targetCtx.moveTo(plotLeft - (state.showArrows ? 6 * scaleRef : 0), yAxisY);
+      targetCtx.lineTo(plotRight + arrowExtra, yAxisY);
+      targetCtx.stroke();
+
+      // Y-Achse
+      targetCtx.beginPath();
+      targetCtx.moveTo(xAxisX, plotBottom + (state.showArrows ? 6 * scaleRef : 0));
+      targetCtx.lineTo(xAxisX, plotTop - arrowExtra);
+      targetCtx.stroke();
+
+      // Pfeilspitzen
+      if (state.showArrows) {
+        const arrowL = 16 * scaleRef;
+        const arrowW = 6.5 * scaleRef;
+
+        // X-Pfeil
+        const xHead = plotRight + arrowExtra;
+        targetCtx.beginPath();
+        targetCtx.moveTo(xHead, yAxisY);
+        targetCtx.lineTo(xHead - arrowL, yAxisY - arrowW);
+        targetCtx.lineTo(xHead - arrowL, yAxisY + arrowW);
+        targetCtx.closePath();
+        targetCtx.fill();
+
+        // Y-Pfeil
+        const yHead = plotTop - arrowExtra;
+        targetCtx.beginPath();
+        targetCtx.moveTo(xAxisX, yHead);
+        targetCtx.lineTo(xAxisX - arrowW, yHead + arrowL);
+        targetCtx.lineTo(xAxisX + arrowW, yHead + arrowL);
+        targetCtx.closePath();
+        targetCtx.fill();
+      }
+
+      // 4. Skalenstriche (Ticks) & Zahlenbeschriftung
+      const tickSize = state.showTicks ? 6 * scaleRef : 0;
+      const fontSizePx = Math.round(state.fontSize * scaleRef * 2.2);
+      targetCtx.font = `600 ${fontSizePx}px Inter, -apple-system, system-ui, sans-serif`;
+
+      // X-Achse Ticks & Zahlen
+      const stepX = state.unitsPerGridX;
+      const firstTickIdxX = Math.ceil((state.xMin - 1e-9) / stepX);
+      const lastTickIdxX = Math.floor((state.xMax + 1e-9) / stepX);
+      for (let idx = firstTickIdxX; idx <= lastTickIdxX; idx++) {
+        const x = idx * stepX;
+        const px = toScreenX(x);
+        
+        if (state.showTicks) {
+          targetCtx.beginPath();
+          targetCtx.moveTo(px, yAxisY - tickSize);
+          targetCtx.lineTo(px, yAxisY + tickSize);
+          targetCtx.stroke();
+        }
+
+        if (state.showNumbers) {
+          if (idx === 0 && !state.showOrigin) continue;
+          if (idx % state.labelIntervalX !== 0) continue;
+
+          if (idx !== 0) {
+            targetCtx.textAlign = 'center';
+            targetCtx.textBaseline = 'top';
+            const numStr = formatAxisTickValue(x, 'x');
+            targetCtx.fillText(numStr, px, yAxisY + tickSize + (5 * scaleRef));
+          }
+        }
+      }
+
+      // Y-Achse Ticks & Zahlen
+      const stepY = state.unitsPerGridY;
+      const firstTickIdxY = Math.ceil((state.yMin - 1e-9) / stepY);
+      const lastTickIdxY = Math.floor((state.yMax + 1e-9) / stepY);
+      for (let idx = firstTickIdxY; idx <= lastTickIdxY; idx++) {
+        const y = idx * stepY;
+        const py = toScreenY(y);
+
+        if (state.showTicks) {
+          targetCtx.beginPath();
+          targetCtx.moveTo(xAxisX - tickSize, py);
+          targetCtx.lineTo(xAxisX + tickSize, py);
+          targetCtx.stroke();
+        }
+
+        if (state.showNumbers) {
+          if (idx === 0) continue;
+          if (idx % state.labelIntervalY !== 0) continue;
+
+          targetCtx.textAlign = 'right';
+          targetCtx.textBaseline = 'middle';
+          const numStr = formatAxisTickValue(y, 'y');
+          targetCtx.fillText(numStr, xAxisX - tickSize - (6 * scaleRef), py);
+        }
+      }
+
+      // Nullpunkt '0' am Schnittpunkt
+      if (state.showNumbers && state.showOrigin && hasXAxis && hasYAxis) {
+        targetCtx.textAlign = 'right';
+        targetCtx.textBaseline = 'top';
+        targetCtx.fillText('0', originX - (7 * scaleRef), originY + (6 * scaleRef));
+      }
+
+      // 5. Achsenbeschriftung
+      targetCtx.font = `italic bold ${Math.round(fontSizePx * 1.25)}px "Times New Roman", Times, serif`;
+      if (state.labelX) {
+        targetCtx.textAlign = 'left';
+        targetCtx.textBaseline = 'middle';
+        targetCtx.fillText(state.labelX, plotRight + arrowExtra + (8 * scaleRef), yAxisY);
+      }
+      if (state.labelY) {
+        targetCtx.textAlign = 'center';
+        targetCtx.textBaseline = 'bottom';
+        targetCtx.fillText(state.labelY, xAxisX, plotTop - arrowExtra - (6 * scaleRef));
+      }
+
+      targetCtx.restore();
+    }
+
+    function draw() {
+      renderCoordinateSystem(canvas, false);
+      updateViewportDisplaySize();
+    }
+
+    // Passt die Bildschirm-Darstellung des Canvas an (ohne die echte Export-Auflösung zu verändern)
+    function updateViewportDisplaySize() {
+      const dim = computeDimensions();
+      const availW = Math.max(200, viewportContainer.clientWidth - 64);
+      const availH = Math.max(200, viewportContainer.clientHeight - 64);
+
+      const screenPxPerCm = 37.8; // 96 DPI Referenz
+      const naturalScreenW = dim.totalWidthCm * screenPxPerCm;
+      const naturalScreenH = dim.totalHeightCm * screenPxPerCm;
+
+      let displayW, displayH;
+
+      if (state.zoomMode === 'fit') {
+        const fitScale = Math.min(1.3, availW / naturalScreenW, availH / naturalScreenH);
+        displayW = Math.round(naturalScreenW * fitScale);
+        displayH = Math.round(naturalScreenH * fitScale);
+        zoomLabel.textContent = 'Passend';
+      } else {
+        displayW = Math.round(naturalScreenW * state.zoomFactor);
+        displayH = Math.round(naturalScreenH * state.zoomFactor);
+        zoomLabel.textContent = `${Math.round(state.zoomFactor * 100)}%`;
+      }
+
+      canvas.style.width = `${displayW}px`;
+      canvas.style.height = `${displayH}px`;
+
+      if (state.bgTransparent) {
+        canvasCard.classList.remove('bg-white');
+        canvasCard.classList.add('checkerboard');
+      } else {
+        canvasCard.classList.add('bg-white');
+        canvasCard.classList.remove('checkerboard');
+      }
+    }
+
+    /**
+     * Liest alle Formularwerte sicher ein und aktualisiert den State.
+     */
+    function readInputsToState() {
+      let xMin = parseMathInput(inputs.xMin.value, state.xMin);
+      let xMax = parseMathInput(inputs.xMax.value, state.xMax);
+      let yMin = parseMathInput(inputs.yMin.value, state.yMin);
+      let yMax = parseMathInput(inputs.yMax.value, state.yMax);
+
+      if (xMin >= xMax) xMax = xMin + (state.unitsPerGridX || 1);
+      if (yMin >= yMax) yMax = yMin + (state.unitsPerGridY || 1);
+
+      state.xMin = xMin;
+      state.xMax = xMax;
+      state.yMin = yMin;
+      state.yMax = yMax;
+
+      const cm = parseMathInput(inputs.gridSpacingCm.value, 0.5);
+      state.gridSpacingCm = Math.max(0.2, Math.min(5, cm));
+
+      // Zahlen-Intervall für die aktuell gewählte Achse (oder beide wenn synchron)
+      const intervalVal = Math.max(1, Math.round(parseMathInput(inputs.labelIntervalCustom.value, 2)));
+      if (state.syncAxes) {
+        state.labelIntervalX = intervalVal;
+        state.labelIntervalY = intervalVal;
+      } else if (state.activeScaleAxis === 'x') {
+        state.labelIntervalX = intervalVal;
+      } else {
+        state.labelIntervalY = intervalVal;
+      }
+
+      state.dpi = Math.max(72, Math.round(parseMathInput(inputs.dpiSelect.value, 300)));
+      state.marginCm = Math.max(0.2, parseMathInput(inputs.marginCm.value, 0.7));
+      state.gridType = inputs.gridType.value;
+      state.gridColor = inputs.gridColor.value;
+      state.showSubgrid = inputs.showSubgrid.checked;
+      state.subgridCount = Math.max(2, Math.round(parseMathInput(inputs.subgridCount.value, 5)));
+      state.axisWidth = parseMathInput(inputs.axisWidth.value, 2);
+      state.showArrows = inputs.showArrows.checked;
+      state.showTicks = inputs.showTicks.checked;
+      state.showNumbers = inputs.showNumbers.checked;
+      state.showOrigin = inputs.showOrigin.checked;
+      state.labelX = inputs.labelX.value;
+      state.labelY = inputs.labelY.value;
+      state.fontSize = Math.max(6, Math.round(parseMathInput(inputs.fontSize.value, 11)));
+      state.bgTransparent = inputs.bgTransparent.checked;
+
+      updateSidebarBadges();
+      draw();
+    }
+
+    /**
+     * Aktualisiert die Hervorhebung der Buttons und Info-Badges in der Seitenleiste.
+     */
+    function updateSidebarBadges() {
+      const activeAxis = state.syncAxes ? 'x' : state.activeScaleAxis;
+      const activePreset = activeAxis === 'x' ? state.scalePresetModeX : state.scalePresetModeY;
+      const activeUnits = activeAxis === 'x' ? state.unitsPerGridX : state.unitsPerGridY;
+      const activeInterval = activeAxis === 'x' ? state.labelIntervalX : state.labelIntervalY;
+
+      // Sync-Button & Achsen-Tabs
+      const syncLabel = document.getElementById('syncAxesLabel');
+      const axisTabs = document.getElementById('axisScaleTabs');
+      const scaleTargetTitle = document.getElementById('scaleTargetTitle');
+
+      if (state.syncAxes) {
+        syncLabel.textContent = 'x & y synchron';
+        axisTabs.classList.add('hidden');
+        axisTabs.classList.remove('grid');
+        scaleTargetTitle.textContent = `Wert je Kästchen (${formatNumberWithSep(state.gridSpacingCm)} cm)`;
+      } else {
+        syncLabel.textContent = 'x & y getrennt';
+        axisTabs.classList.remove('hidden');
+        axisTabs.classList.add('grid');
+        scaleTargetTitle.textContent = `${activeAxis}-Achse: Wert je Kästchen`;
+      }
+
+      document.querySelectorAll('.axis-tab-btn').forEach(btn => {
+        if (btn.dataset.axisTab === state.activeScaleAxis) {
+          btn.className = 'axis-tab-btn py-1 rounded-md font-bold text-xs bg-brand-600 text-white transition cursor-pointer';
+        } else {
+          btn.className = 'axis-tab-btn py-1 rounded-md font-semibold text-xs text-slate-600 hover:bg-slate-100 transition cursor-pointer';
+        }
+      });
+
+      // Skalierungs-Preset-Buttons
+      document.querySelectorAll('.scale-preset-btn').forEach(btn => {
+        const p = btn.dataset.scalePreset;
+        const isFontSerif = p.includes('pi');
+        const fontCls = isFontSerif ? 'font-serif font-bold' : 'font-semibold';
+        if (p === activePreset) {
+          btn.className = `scale-preset-btn py-1.5 px-1 rounded-lg ${fontCls} border border-brand-600 bg-brand-600 text-white transition text-center cursor-pointer`;
+        } else {
+          btn.className = `scale-preset-btn py-1.5 px-1 rounded-lg ${fontCls} border border-slate-300 bg-white text-slate-700 hover:border-brand-400 transition text-center cursor-pointer`;
+        }
+      });
+
+      // Erklärungs-Badge
+      const formattedUnit = formatAxisTickValue(activeUnits, activeAxis);
+      const formattedCm = formatNumberWithSep(state.gridSpacingCm);
+      scaleExplainBadge.textContent = `1 Kästchen (${formattedCm} cm) = ${formattedUnit}`;
+
+      // Zahlen-Intervall Hinweis
+      const distCm = formatNumberWithSep(Number((activeInterval * state.gridSpacingCm).toFixed(2)));
+      labelEveryHint.textContent = activeInterval === 1
+        ? `jedes Kästchen (${distCm} cm)`
+        : `jedes ${activeInterval}. Kästchen (${distCm} cm)`;
+
+      // Kästchengröße-Buttons (Erweiterte Einstellungen)
+      document.querySelectorAll('.cm-btn').forEach(btn => {
+        const bVal = Number(btn.dataset.cm);
+        if (Math.abs(state.gridSpacingCm - bVal) < 1e-4) {
+          btn.className = 'cm-btn py-1.5 px-2 rounded-lg font-semibold border border-brand-600 bg-brand-600 text-white transition text-center cursor-pointer';
+        } else {
+          btn.className = 'cm-btn py-1.5 px-2 rounded-lg font-semibold border border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100 transition text-center cursor-pointer';
+        }
+      });
+
+      // Dezimaltrennzeichen-Buttons (Erweiterte Einstellungen)
+      document.querySelectorAll('.dec-sep-btn').forEach(btn => {
+        if (btn.dataset.decSep === state.decimalSeparator) {
+          btn.className = 'dec-sep-btn py-1.5 px-2 rounded-lg font-semibold border border-brand-600 bg-brand-600 text-white transition text-center cursor-pointer';
+        } else {
+          btn.className = 'dec-sep-btn py-1.5 px-2 rounded-lg font-semibold border border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100 transition text-center cursor-pointer';
+        }
+      });
+    }
+
+    /**
+     * Synchronisiert den State zurück in die Formularfelder (z.B. nach Vorlagen-Klick).
+     */
+    function syncUi() {
+      inputs.xMin.value = formatDomainInputValue(state.xMin);
+      inputs.xMax.value = formatDomainInputValue(state.xMax);
+      inputs.yMin.value = formatDomainInputValue(state.yMin);
+      inputs.yMax.value = formatDomainInputValue(state.yMax);
+
+      const activeAxis = state.syncAxes ? 'x' : state.activeScaleAxis;
+      inputs.scaleExprInput.value = activeAxis === 'x' ? state.scaleExprX : state.scaleExprY;
+
+      const activeInterval = activeAxis === 'x' ? state.labelIntervalX : state.labelIntervalY;
+      inputs.labelIntervalCustom.value = activeInterval;
+      if (['1', '2', '4', '5', '10'].includes(String(activeInterval))) {
+        inputs.labelIntervalSelect.value = String(activeInterval);
+      }
+
+      inputs.gridSpacingCm.value = state.gridSpacingCm;
+      inputs.dpiSelect.value = state.dpi;
+      inputs.marginCm.value = state.marginCm;
+      inputs.gridType.value = state.gridType;
+      inputs.gridColor.value = state.gridColor;
+      inputs.showSubgrid.checked = state.showSubgrid;
+      inputs.subgridCount.value = state.subgridCount;
+      inputs.axisWidth.value = state.axisWidth;
+      inputs.showArrows.checked = state.showArrows;
+      inputs.showTicks.checked = state.showTicks;
+      inputs.showNumbers.checked = state.showNumbers;
+      inputs.showOrigin.checked = state.showOrigin;
+      inputs.labelX.value = state.labelX;
+      inputs.labelY.value = state.labelY;
+      inputs.fontSize.value = state.fontSize;
+      inputs.bgTransparent.checked = state.bgTransparent;
+
+      updateSidebarBadges();
+      draw();
+    }
+
+    /**
+     * Setzt die Skalierung für die aktive Achse (oder beide, wenn synchron).
+     */
+    function applyScaleExpression(exprStr, presetKey = 'custom', autoAdjustDomain = false) {
+      const parsed = parseMathInput(exprStr, 1);
+      const validVal = parsed > 0 ? parsed : 1;
+
+      if (state.syncAxes) {
+        state.unitsPerGridX = validVal;
+        state.unitsPerGridY = validVal;
+        state.scaleExprX = exprStr;
+        state.scaleExprY = exprStr;
+        state.scalePresetModeX = presetKey;
+        state.scalePresetModeY = presetKey;
+      } else if (state.activeScaleAxis === 'x') {
+        state.unitsPerGridX = validVal;
+        state.scaleExprX = exprStr;
+        state.scalePresetModeX = presetKey;
+      } else {
+        state.unitsPerGridY = validVal;
+        state.scaleExprY = exprStr;
+        state.scalePresetModeY = presetKey;
+      }
+
+      if (autoAdjustDomain) {
+        if (state.syncAxes || state.activeScaleAxis === 'x') {
+          const isQ1 = state.xMin >= 0;
+          state.xMin = isQ1 ? 0 : -10 * state.unitsPerGridX;
+          state.xMax = 10 * state.unitsPerGridX;
+        }
+        if (state.syncAxes || state.activeScaleAxis === 'y') {
+          const isQ1 = state.yMin >= 0;
+          state.yMin = isQ1 ? 0 : -10 * state.unitsPerGridY;
+          state.yMax = 10 * state.unitsPerGridY;
+        }
+      }
+
+      syncUi();
+    }
+
+    // Toast Benachrichtigung anzeigen
+    let toastTimer = null;
+    function showToast(title, sub, isWarning = false) {
+      const toast = document.getElementById('toast');
+      const iconWrap = document.getElementById('toastIconWrap');
+      const icon = document.getElementById('toastIcon');
+      document.getElementById('toastTitle').textContent = title;
+      document.getElementById('toastSub').textContent = sub;
+
+      if (isWarning) {
+        iconWrap.className = 'w-7 h-7 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0';
+        icon.className = 'fa-solid fa-triangle-exclamation';
+      } else {
+        iconWrap.className = 'w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0';
+        icon.className = 'fa-solid fa-check';
+      }
+
+      toast.classList.remove('translate-y-24', 'opacity-0');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.add('translate-y-24', 'opacity-0');
+      }, 3600);
+    }
+
+    // 1. ZWISCHENABLAGE: Kopiert das Bild ausschließlich in die Zwischenablage (kein Datei-Download!)
+    async function copyToClipboardOnly() {
+      try {
+        if (!navigator.clipboard || !window.ClipboardItem) {
+          showToast(
+            'Zwischenablage blockiert',
+            'Dein Browser blockiert den direkten Bild-Zugriff. Bitte nutze den PNG-Button.',
+            true
+          );
+          return;
+        }
+
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        const item = new ClipboardItem({ 'image/png': blob });
+        await navigator.clipboard.write([item]);
+        const dim = computeDimensions();
+        showToast(
+          'In Zwischenablage kopiert!',
+          `Maßstab ${formatNumberWithSep(Number(dim.totalWidthCm.toFixed(1)))} × ${formatNumberWithSep(Number(dim.totalHeightCm.toFixed(1)))} cm – jetzt mit Strg+V einfügen.`
+        );
+      } catch (err) {
+        showToast(
+          'Kopieren durch Browser eingeschränkt',
+          'In dieser Vorschau-Umgebung ist ClipboardItem gesperrt. Bitte nutze PNG oder PDF.',
+          true
+        );
+      }
+    }
+
+    // 2. PNG DOWNLOAD (unterstützt Transparenz)
+    function downloadPNG() {
+      const dim = computeDimensions();
+      const link = document.createElement('a');
+      link.download = `koordinatensystem_${dim.totalWidthCm.toFixed(1)}x${dim.totalHeightCm.toFixed(1)}cm.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      showToast('PNG heruntergeladen', `Größe: ${formatNumberWithSep(Number(dim.totalWidthCm.toFixed(1)))} cm × ${formatNumberWithSep(Number(dim.totalHeightCm.toFixed(1)))} cm (${state.dpi} DPI)`);
+    }
+
+    // 3. JPG DOWNLOAD (immer mit reinweißem Hintergrund)
+    function downloadJPG() {
+      const dim = computeDimensions();
+      const offscreen = document.createElement('canvas');
+      renderCoordinateSystem(offscreen, true);
+
+      const link = document.createElement('a');
+      link.download = `koordinatensystem_${dim.totalWidthCm.toFixed(1)}x${dim.totalHeightCm.toFixed(1)}cm.jpg`;
+      link.href = offscreen.toDataURL('image/jpeg', 0.95);
+      link.click();
+      showToast('JPG heruntergeladen', `Größe: ${formatNumberWithSep(Number(dim.totalWidthCm.toFixed(1)))} cm × ${formatNumberWithSep(Number(dim.totalHeightCm.toFixed(1)))} cm`);
+    }
+
+    // 4. PDF DOWNLOAD (Maßstabsgetreu 1:1 in Zentimetern)
+    function downloadPDF() {
+      try {
+        const dim = computeDimensions();
+        const { jsPDF } = window.jspdf;
+
+        const orientation = dim.totalWidthCm > dim.totalHeightCm ? 'l' : 'p';
+        const pdf = new jsPDF({
+          orientation: orientation,
+          unit: 'cm',
+          format: [dim.totalWidthCm, dim.totalHeightCm]
+        });
+
+        const offscreen = document.createElement('canvas');
+        renderCoordinateSystem(offscreen, true);
+        const imgData = offscreen.toDataURL('image/png');
+
+        pdf.addImage(imgData, 'PNG', 0, 0, dim.totalWidthCm, dim.totalHeightCm);
+        pdf.save(`koordinatensystem_${dim.totalWidthCm.toFixed(1)}x${dim.totalHeightCm.toFixed(1)}cm.pdf`);
+
+        showToast('PDF heruntergeladen!', `Exakter 1:1 Druckmaßstab (${formatNumberWithSep(Number(dim.totalWidthCm.toFixed(1)))} × ${formatNumberWithSep(Number(dim.totalHeightCm.toFixed(1)))} cm).`);
+      } catch (err) {
+        console.error(err);
+        showToast('Fehler beim PDF-Export', 'Bitte verwende stattdessen den PNG-Download.', true);
+      }
+    }
+
+    // 5. SVG VEKTOREXPORT (MIT ECHTEN CM-ANGABEN & DYNAMISCHEN RÄNDERN)
+    function downloadSVG() {
+      const dim = computeDimensions();
+      const w = dim.totalWidthCm;
+      const h = dim.totalHeightCm;
+      const plotLeft = dim.padLeftCm;
+      const plotRight = dim.padLeftCm + dim.plotWidthCm;
+      const plotTop = dim.padTopCm;
+      const plotBottom = dim.padTopCm + dim.plotHeightCm;
+      const plotW = dim.plotWidthCm;
+      const plotH = dim.plotHeightCm;
+
+      const toSvgX = (x) => plotLeft + ((x - state.xMin) / dim.xRange) * plotW;
+      const toSvgY = (y) => plotTop + ((state.yMax - y) / dim.yRange) * plotH;
+
+      const originX = toSvgX(0);
+      const originY = toSvgY(0);
+      const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+      let svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${w.toFixed(3)}cm" height="${h.toFixed(3)}cm" viewBox="0 0 ${w.toFixed(3)} ${h.toFixed(3)}">
+  <style>
+    .grid { stroke: ${state.gridColor}; stroke-width: 0.025cm; }
+    .subgrid { stroke: ${state.gridColor}; stroke-width: 0.015cm; opacity: 0.45; }
+    .axis { stroke: ${state.axisColor}; stroke-width: 0.045cm; fill: none; }
+    .arrow { fill: ${state.axisColor}; }
+    .tick-num { font-family: Inter, Arial, sans-serif; font-size: ${state.fontSize * 0.028}cm; font-weight: 600; fill: ${state.axisColor}; }
+    .axis-label { font-family: "Times New Roman", serif; font-style: italic; font-weight: bold; font-size: ${(state.fontSize + 3) * 0.03}cm; fill: ${state.axisColor}; }
+  </style>\n`;
+
+      if (!state.bgTransparent) {
+        svg += `  <rect width="100%" height="100%" fill="#ffffff" />\n`;
+      }
+
+      // Subgrid
+      if (state.showSubgrid && state.gridType !== 'none') {
+        const subStepX = state.unitsPerGridX / state.subgridCount;
+        const subStepY = state.unitsPerGridY / state.subgridCount;
+        const firstSubX = Math.ceil((state.xMin - 1e-9) / subStepX);
+        const lastSubX = Math.floor((state.xMax + 1e-9) / subStepX);
+        for (let i = firstSubX; i <= lastSubX; i++) {
+          const px = toSvgX(i * subStepX);
+          svg += `  <line x1="${px.toFixed(3)}" y1="${plotTop.toFixed(3)}" x2="${px.toFixed(3)}" y2="${plotBottom.toFixed(3)}" class="subgrid" />\n`;
+        }
+        const firstSubY = Math.ceil((state.yMin - 1e-9) / subStepY);
+        const lastSubY = Math.floor((state.yMax + 1e-9) / subStepY);
+        for (let j = firstSubY; j <= lastSubY; j++) {
+          const py = toSvgY(j * subStepY);
+          svg += `  <line x1="${plotLeft.toFixed(3)}" y1="${py.toFixed(3)}" x2="${plotRight.toFixed(3)}" y2="${py.toFixed(3)}" class="subgrid" />\n`;
+        }
+      }
+
+      // Main Grid
+      if (state.gridType !== 'none') {
+        let dash = '';
+        if (state.gridType === 'dashed') dash = 'stroke-dasharray="0.1,0.1"';
+        if (state.gridType === 'dotted') dash = 'stroke-dasharray="0.03,0.06"';
+
+        const stepX = state.unitsPerGridX;
+        const stepY = state.unitsPerGridY;
+        const firstX = Math.ceil((state.xMin - 1e-9) / stepX);
+        const lastX = Math.floor((state.xMax + 1e-9) / stepX);
+        for (let i = firstX; i <= lastX; i++) {
+          const px = toSvgX(i * stepX);
+          svg += `  <line x1="${px.toFixed(3)}" y1="${plotTop.toFixed(3)}" x2="${px.toFixed(3)}" y2="${plotBottom.toFixed(3)}" class="grid" ${dash} />\n`;
+        }
+        const firstY = Math.ceil((state.yMin - 1e-9) / stepY);
+        const lastY = Math.floor((state.yMax + 1e-9) / stepY);
+        for (let j = firstY; j <= lastY; j++) {
+          const py = toSvgY(j * stepY);
+          svg += `  <line x1="${plotLeft.toFixed(3)}" y1="${py.toFixed(3)}" x2="${plotRight.toFixed(3)}" y2="${py.toFixed(3)}" class="grid" ${dash} />\n`;
+        }
+      }
+
+      // Achsen
+      const hasX = (state.yMin <= 0 && state.yMax >= 0);
+      const hasY = (state.xMin <= 0 && state.xMax >= 0);
+      const yAxisY = hasX ? originY : (state.yMin >= 0 ? plotBottom : plotTop);
+      const xAxisX = hasY ? originX : (state.xMin >= 0 ? plotLeft : plotRight);
+      const arrowEx = state.showArrows ? 0.35 : 0;
+
+      svg += `  <line x1="${(plotLeft - (state.showArrows ? 0.1 : 0)).toFixed(3)}" y1="${yAxisY.toFixed(3)}" x2="${(plotRight + arrowEx).toFixed(3)}" y2="${yAxisY.toFixed(3)}" class="axis" />\n`;
+      svg += `  <line x1="${xAxisX.toFixed(3)}" y1="${(plotBottom + (state.showArrows ? 0.1 : 0)).toFixed(3)}" x2="${xAxisX.toFixed(3)}" y2="${(plotTop - arrowEx).toFixed(3)}" class="axis" />\n`;
+
+      if (state.showArrows) {
+        const xHead = plotRight + arrowEx;
+        svg += `  <polygon points="${xHead.toFixed(3)},${yAxisY.toFixed(3)} ${(xHead - 0.25).toFixed(3)},${(yAxisY - 0.1).toFixed(3)} ${(xHead - 0.25).toFixed(3)},${(yAxisY + 0.1).toFixed(3)}" class="arrow" />\n`;
+        const yHead = plotTop - arrowEx;
+        svg += `  <polygon points="${xAxisX.toFixed(3)},${yHead.toFixed(3)} ${(xAxisX - 0.1).toFixed(3)},${(yHead + 0.25).toFixed(3)} ${(xAxisX + 0.1).toFixed(3)},${(yHead + 0.25).toFixed(3)}" class="arrow" />\n`;
+      }
+
+      // Ticks & Zahlen X
+      const stepX = state.unitsPerGridX;
+      const firstTickX = Math.ceil((state.xMin - 1e-9) / stepX);
+      const lastTickX = Math.floor((state.xMax + 1e-9) / stepX);
+      for (let idx = firstTickX; idx <= lastTickX; idx++) {
+        const x = idx * stepX;
+        const px = toSvgX(x);
+        if (state.showTicks) {
+          svg += `  <line x1="${px.toFixed(3)}" y1="${(yAxisY - 0.08).toFixed(3)}" x2="${px.toFixed(3)}" y2="${(yAxisY + 0.08).toFixed(3)}" class="axis" />\n`;
+        }
+        if (state.showNumbers && idx !== 0 && (idx % state.labelIntervalX === 0)) {
+          svg += `  <text x="${px.toFixed(3)}" y="${(yAxisY + 0.32).toFixed(3)}" text-anchor="middle" class="tick-num">${esc(formatAxisTickValue(x, 'x'))}</text>\n`;
+        }
+      }
+
+      // Ticks & Zahlen Y
+      const stepY = state.unitsPerGridY;
+      const firstTickY = Math.ceil((state.yMin - 1e-9) / stepY);
+      const lastTickY = Math.floor((state.yMax + 1e-9) / stepY);
+      for (let idx = firstTickY; idx <= lastTickY; idx++) {
+        const y = idx * stepY;
+        const py = toSvgY(y);
+        if (state.showTicks) {
+          svg += `  <line x1="${(xAxisX - 0.08).toFixed(3)}" y1="${py.toFixed(3)}" x2="${(xAxisX + 0.08).toFixed(3)}" y2="${py.toFixed(3)}" class="axis" />\n`;
+        }
+        if (state.showNumbers && idx !== 0 && (idx % state.labelIntervalY === 0)) {
+          svg += `  <text x="${(xAxisX - 0.12).toFixed(3)}" y="${(py + 0.08).toFixed(3)}" text-anchor="end" class="tick-num">${esc(formatAxisTickValue(y, 'y'))}</text>\n`;
+        }
+      }
+
+      if (state.showNumbers && state.showOrigin && hasX && hasY) {
+        svg += `  <text x="${(originX - 0.12).toFixed(3)}" y="${(originY + 0.28).toFixed(3)}" text-anchor="end" class="tick-num">0</text>\n`;
+      }
+
+      if (state.labelX) {
+        svg += `  <text x="${(plotRight + arrowEx + 0.15).toFixed(3)}" y="${(yAxisY + 0.08).toFixed(3)}" text-anchor="start" class="axis-label">${esc(state.labelX)}</text>\n`;
+      }
+      if (state.labelY) {
+        svg += `  <text x="${xAxisX.toFixed(3)}" y="${(plotTop - arrowEx - 0.12).toFixed(3)}" text-anchor="middle" class="axis-label">${esc(state.labelY)}</text>\n`;
+      }
+
+      svg += `</svg>`;
+
+      const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `koordinatensystem_${w.toFixed(1)}x${h.toFixed(1)}cm.svg`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('SVG Vektorgrafik gespeichert!', `Exakte Maße: ${formatNumberWithSep(Number(w.toFixed(1)))} cm × ${formatNumberWithSep(Number(h.toFixed(1)))} cm`);
+    }
+
+    // EVENT LISTENERS INITIALISIEREN
+    function initEvents() {
+      // Automatische Neuberechnung bei Input-Änderung
+      Object.keys(inputs).forEach(key => {
+        const el = inputs[key];
+        if (!el || key === 'scaleExprInput' || key === 'labelIntervalSelect') return;
+        el.addEventListener('input', readInputsToState);
+        el.addEventListener('change', readInputsToState);
+      });
+
+      // Umschalten zwischen synchroner und getrennter Achsenskalierung
+      document.getElementById('toggleSyncAxesBtn').addEventListener('click', () => {
+        state.syncAxes = !state.syncAxes;
+        if (state.syncAxes) {
+          state.unitsPerGridY = state.unitsPerGridX;
+          state.scaleExprY = state.scaleExprX;
+          state.scalePresetModeY = state.scalePresetModeX;
+          state.labelIntervalY = state.labelIntervalX;
+        }
+        syncUi();
+      });
+
+      // Tabs für X-Achse / Y-Achse wenn getrennt skaliert wird
+      document.querySelectorAll('.axis-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.activeScaleAxis = btn.dataset.axisTab;
+          syncUi();
+        });
+      });
+
+      // Schnellwahl-Buttons für Achsenskalierung (0.5, 1, 2, 10, 100, 1000, pi/4, pi/2, pi, custom)
+      document.querySelectorAll('.scale-preset-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const preset = btn.dataset.scalePreset;
+          if (preset === 'custom') {
+            if (state.syncAxes) {
+              state.scalePresetModeX = 'custom';
+              state.scalePresetModeY = 'custom';
+            } else if (state.activeScaleAxis === 'x') {
+              state.scalePresetModeX = 'custom';
+            } else {
+              state.scalePresetModeY = 'custom';
+            }
+            updateSidebarBadges();
+            inputs.scaleExprInput.focus();
+            inputs.scaleExprInput.select();
+          } else {
+            inputs.scaleExprInput.value = preset;
+            applyScaleExpression(preset, preset, false);
+          }
+        });
+      });
+
+      // Freie Eingabe für Skalierungs-Ausdruck (z.B. "500", "pi/3", "0,25")
+      inputs.scaleExprInput.addEventListener('input', () => {
+        const raw = inputs.scaleExprInput.value.trim();
+        const matchingPreset = ['0.5', '1', '2', '10', '100', '1000', 'pi/4', 'pi/2', 'pi'].find(
+          p => p === raw.replace(',', '.').toLowerCase()
+        );
+        applyScaleExpression(raw, matchingPreset || 'custom', false);
+      });
+
+      // Button "Bereich anpassen": Passt Min/Max passend zur gewählten Skalierung an (±10 Kästchen)
+      document.getElementById('fitDomainToScaleBtn').addEventListener('click', () => {
+        const raw = inputs.scaleExprInput.value.trim();
+        const activeAxis = state.syncAxes ? 'x' : state.activeScaleAxis;
+        const activePreset = activeAxis === 'x' ? state.scalePresetModeX : state.scalePresetModeY;
+        applyScaleExpression(raw, activePreset, true);
+      });
+
+      // Zahlen-Intervall Dropdown & Zahlenfeld koppeln
+      inputs.labelIntervalSelect.addEventListener('change', () => {
+        inputs.labelIntervalCustom.value = inputs.labelIntervalSelect.value;
+        readInputsToState();
+      });
+
+      // Dezimaltrennzeichen (Komma vs. Punkt) in den erweiterten Einstellungen
+      document.querySelectorAll('.dec-sep-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.decimalSeparator = btn.dataset.decSep;
+          updateSidebarBadges();
+          draw();
+        });
+      });
+
+      // Kästchengröße Buttons (0,5 cm / 1,0 cm)
+      document.querySelectorAll('.cm-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.gridSpacingCm = Number(btn.dataset.cm);
+          inputs.gridSpacingCm.value = state.gridSpacingCm;
+          readInputsToState();
+        });
+      });
+
+      // Gitterfarben-Schnellwahl
+      document.querySelectorAll('.color-preset').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.gridColor = btn.dataset.gridcolor;
+          inputs.gridColor.value = state.gridColor;
+          draw();
+        });
+      });
+
+      // Schnellvorlagen (ganz oben)
+      document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const p = btn.dataset.preset;
+          state.gridSpacingCm = 0.5;
+          if (p === 'standard') {
+            state.syncAxes = true;
+            state.xMin = -5; state.xMax = 5;
+            state.yMin = -5; state.yMax = 5;
+            state.unitsPerGridX = 1; state.unitsPerGridY = 1;
+            state.scaleExprX = '1'; state.scaleExprY = '1';
+            state.scalePresetModeX = '1'; state.scalePresetModeY = '1';
+            state.labelIntervalX = 2; state.labelIntervalY = 2;
+          } else if (p === 'quadrant1') {
+            state.syncAxes = true;
+            state.xMin = 0; state.xMax = 10;
+            state.yMin = 0; state.yMax = 10;
+            state.unitsPerGridX = 1; state.unitsPerGridY = 1;
+            state.scaleExprX = '1'; state.scaleExprY = '1';
+            state.scalePresetModeX = '1'; state.scalePresetModeY = '1';
+            state.labelIntervalX = 2; state.labelIntervalY = 2;
+          } else if (p === 'analysis10') {
+            // Exakt -10 bis 10 auf beiden Achsen
+            state.syncAxes = true;
+            state.xMin = -10; state.xMax = 10;
+            state.yMin = -10; state.yMax = 10;
+            state.unitsPerGridX = 1; state.unitsPerGridY = 1;
+            state.scaleExprX = '1'; state.scaleExprY = '1';
+            state.scalePresetModeX = '1'; state.scalePresetModeY = '1';
+            state.labelIntervalX = 2; state.labelIntervalY = 2;
+          } else if (p === 'trigPi') {
+            state.syncAxes = false;
+            state.activeScaleAxis = 'x';
+            state.unitsPerGridX = Math.PI / 4;
+            state.unitsPerGridY = 0.5;
+            state.scaleExprX = 'pi/4';
+            state.scaleExprY = '0.5';
+            state.scalePresetModeX = 'pi/4';
+            state.scalePresetModeY = '0.5';
+            state.xMin = -2 * Math.PI;
+            state.xMax = 2 * Math.PI;
+            state.yMin = -2;
+            state.yMax = 2;
+            state.labelIntervalX = 2; // alle 2 Kästchen = π/2
+            state.labelIntervalY = 2; // alle 2 Kästchen = 1
+          }
+          state.zoomMode = 'fit';
+          syncUi();
+        });
+      });
+
+      // Zurücksetzen
+      document.getElementById('resetBtn').addEventListener('click', () => {
+        Object.assign(state, {
+          xMin: -5, xMax: 5, yMin: -5, yMax: 5,
+          gridSpacingCm: 0.5,
+          syncAxes: true, activeScaleAxis: 'x',
+          unitsPerGridX: 1, unitsPerGridY: 1,
+          scaleExprX: '1', scaleExprY: '1',
+          scalePresetModeX: '1', scalePresetModeY: '1',
+          labelIntervalX: 2, labelIntervalY: 2,
+          decimalSeparator: 'comma',
+          dpi: 300, marginCm: 0.7,
+          gridType: 'solid', gridColor: '#cbd5e1',
+          showSubgrid: false, subgridCount: 5,
+          axisWidth: 2, showArrows: true, showTicks: true,
+          showNumbers: true, showOrigin: true,
+          labelX: 'x', labelY: 'y', fontSize: 11,
+          bgTransparent: false, zoomMode: 'fit'
+        });
+        syncUi();
+      });
+
+      // Zoom-Steuerung
+      document.getElementById('zoomInBtn').addEventListener('click', () => {
+        if (state.zoomMode === 'fit') state.zoomFactor = 1.0;
+        state.zoomMode = 'custom';
+        state.zoomFactor = Math.min(2.5, state.zoomFactor + 0.15);
+        updateViewportDisplaySize();
+      });
+
+      document.getElementById('zoomOutBtn').addEventListener('click', () => {
+        if (state.zoomMode === 'fit') state.zoomFactor = 1.0;
+        state.zoomMode = 'custom';
+        state.zoomFactor = Math.max(0.3, state.zoomFactor - 0.15);
+        updateViewportDisplaySize();
+      });
+
+      document.getElementById('zoomFitBtn').addEventListener('click', () => {
+        state.zoomMode = 'fit';
+        updateViewportDisplaySize();
+      });
+
+      document.getElementById('zoom100Btn').addEventListener('click', () => {
+        state.zoomMode = 'custom';
+        state.zoomFactor = 1.0;
+        updateViewportDisplaySize();
+      });
+
+      // Export-Buttons
+      document.getElementById('copyBtn').addEventListener('click', copyToClipboardOnly);
+      document.getElementById('downloadPngBtn').addEventListener('click', downloadPNG);
+      document.getElementById('downloadJpgBtn').addEventListener('click', downloadJPG);
+      document.getElementById('downloadPdfBtn').addEventListener('click', downloadPDF);
+      document.getElementById('downloadSvgBtn').addEventListener('click', downloadSVG);
+
+      window.addEventListener('resize', updateViewportDisplaySize);
+    }
+
+    // Start
+    window.addEventListener('DOMContentLoaded', () => {
+      initEvents();
+      syncUi();
+    });
+  </script>
+</body>
+</html>
